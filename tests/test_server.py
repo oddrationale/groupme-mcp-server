@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastmcp import Client, FastMCP
 
+from groupme_mcp_server import observability
 from groupme_mcp_server.__main__ import main
 from groupme_mcp_server.server import mcp
 
@@ -27,3 +28,8 @@ def test_main_runs_the_server(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mcp, "run", lambda: calls.append(()))
     main()
     assert len(calls) == 1
+
+
+def test_import_configured_observability() -> None:
+    """Importing server.py must have run the observability setup."""
+    assert observability._configured is True
