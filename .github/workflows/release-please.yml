@@ -1,0 +1,52 @@
+# Release Please owns the version number and CHANGELOG.md.
+#
+# On every push to main it opens (or updates) a release pull request that bumps
+# the version in pyproject.toml and uv.lock and writes the changelog entry from
+# the Conventional Commit subjects since the last release. Merging that pull
+# request makes it create the git tag and the GitHub release, which in turn
+# triggers release.yml to build and publish to PyPI.
+#
+# The tag is pushed with a GitHub App token rather than GITHUB_TOKEN, because
+# GitHub deliberately does not trigger workflows from events created by
+# GITHUB_TOKEN -- release.yml would never fire.
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Maintain the release pull request
+    runs-on: ubuntu-latest
+    # Skip cleanly until the App credentials exist, so a fresh clone or fork
+    # does not fail on every push. See CONTRIBUTING.md for the setup.
+    if: vars.RELEASE_PLEASE_APP_ID != ''
+    # No GITHUB_TOKEN permissions are needed: every write is made with the
+    # short-lived App token minted below.
+    permissions: {}
+    steps:
+      - name: Mint a GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_PRIVATE_KEY }}
+          # Narrow the token to exactly what Release Please needs, rather than
+          # inheriting every permission the App installation was granted.
+          permission-contents: write # push the release branch, tag, and release
+          permission-pull-requests: write # open, update, and label the release PR
+
+      - name: Run Release Please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

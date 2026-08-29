@@ -157,6 +157,25 @@ If you edit a workflow: all `uses:` are pinned to full commit SHAs with a
 trailing `# vX` comment. Keep it that way — Dependabot bumps them. Run
 `uvx zizmor --persona=pedantic .` after editing.
 
+## Versioning is automated — do not touch it
+
+[Release Please](https://github.com/googleapis/release-please) owns the version
+number and the changelog. **Never** hand-edit any of these:
+
+- `CHANGELOG.md`
+- `version` in `pyproject.toml`
+- the `groupme-mcp-server` entry in `uv.lock`
+- `.release-please-manifest.json`
+
+They are regenerated from Conventional Commit subjects on every push to `main`,
+and hand edits are silently overwritten by the next release pull request. If
+asked to "bump the version", the answer is that merging the open release pull
+request does it.
+
+The changelog shows `feat`, `fix`, `perf`, `docs`, `deps`, and `revert`; it
+hides `chore`, `ci`, `build`, `refactor`, `test`, and `style`. Choose the commit
+type with that in mind — a user-visible change should not be a `chore`.
+
 ## `main` is protected
 
 Pull requests are required and CI must be green. Work on a branch; never push
