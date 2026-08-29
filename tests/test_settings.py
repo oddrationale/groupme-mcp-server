@@ -58,7 +58,10 @@ def test_require_access_token_returns_token() -> None:
 def test_require_access_token_raises_actionable_error() -> None:
     with pytest.raises(GroupMeAuthError, match="Set GROUPME_ACCESS_TOKEN") as excinfo:
         Settings().require_access_token()
-    assert "https://dev.groupme.com" in str(excinfo.value)
+    assert str(excinfo.value) == (
+        "GroupMe access token is not configured. "
+        "Set GROUPME_ACCESS_TOKEN — get a token at https://dev.groupme.com"
+    )
 
 
 def test_require_access_token_rejects_control_characters() -> None:

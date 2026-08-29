@@ -42,7 +42,14 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 _SANITIZE_HEADERS_ENV = "OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SANITIZE_FIELDS"
 _TOKEN_HEADER = "X-Access-Token"  # noqa: S105 - a header *name*, not a credential
 
-_configured = False
+
+class _OnceGuard:
+    """Process-wide idempotency flag for :func:`configure_observability`."""
+
+    done: bool = False
+
+
+_guard = _OnceGuard()
 
 
 class TraceContextFilter(logging.Filter):
@@ -126,10 +133,9 @@ def configure_observability(settings: Settings) -> None:
     Args:
         settings: The runtime settings (supplies the log level).
     """
-    global _configured  # noqa: PLW0603 - process-wide idempotency guard
-    if _configured:
+    if _guard.done:
         return
-    _configured = True
+    _guard.done = True
     _configure_logging(settings)
     if _tracing_enabled():
         _configure_tracing()

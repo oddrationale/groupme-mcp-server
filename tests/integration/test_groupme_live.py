@@ -107,4 +107,5 @@ async def test_leaderboard_endpoint_responds(client: GroupMeClient, first_group:
         top = await client.leaderboard(first_group.id, period="week")
     except GroupMeNotFoundError:
         pytest.xfail("GroupMe appears to have retired the undocumented likes leaderboard endpoint")
-    assert all(isinstance(message, Message) for message in top)
+    else:
+        assert all(isinstance(message, Message) for message in top)
