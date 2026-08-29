@@ -36,6 +36,8 @@ jobs:
         run: uv run ruff check --output-format=github .
       - name: ruff format --check
         run: uv run ruff format --check --diff .
+      - name: Verify uv.lock matches pyproject.toml
+        run: uv lock --check
 
   typecheck:
     name: Type check (ty)

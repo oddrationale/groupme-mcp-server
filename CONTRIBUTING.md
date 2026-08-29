@@ -105,27 +105,46 @@ Horizon builds with `uv sync --frozen --no-dev`. Two consequences:
 
 ## Releasing
 
-Maintainer only.
+Releases are automated by [Release Please](https://github.com/googleapis/release-please).
+You do not bump versions, write changelog entries, or push tags by hand.
 
-1. Bump the version: `uv version --bump patch|minor|major`.
-2. Update `CHANGELOG.md`.
-3. Open a PR for those two changes and merge it.
-4. Tag the merge commit and push:
+### How it works
 
-   ```bash
-   git switch main && git pull
-   git tag -a v0.1.1 -m "v0.1.1"
-   git push --follow-tags
-   ```
+1. You merge ordinary pull requests to `main` with Conventional Commit titles.
+2. Release Please keeps a **release pull request** open, titled something like
+   `chore(main): release 0.2.0`. It bumps the version in `pyproject.toml` and
+   `uv.lock`, and writes the `CHANGELOG.md` entry from the commit subjects since
+   the last release. It rewrites that PR on every push to `main`.
+3. **Merging the release pull request is the act of releasing.** Release Please
+   then creates the `v0.2.0` tag and the GitHub release.
+4. That tag triggers `release.yml`, which builds, publishes to PyPI via Trusted
+   Publishing, and attaches the distributions to the release.
 
-The tag triggers `release.yml`, which verifies the tag matches the project
-version, builds, attests build provenance, publishes to PyPI via Trusted
-Publishing, and cuts a GitHub release with generated notes.
+So: merge the release PR when you want to ship, and ignore it otherwise. It is
+safe to leave open indefinitely.
 
-There are **no API tokens** anywhere in this project. PyPI authenticates the
-workflow with a short-lived OIDC token, scoped to this repository, this
-workflow file, and the `pypi` GitHub environment — which only `v*` tags may
-deploy to.
+### What decides the version
+
+| Commit type | Effect while pre-1.0 |
+| ----------- | -------------------- |
+| `fix:` | patch — `0.1.0` → `0.1.1` |
+| `feat:` | minor — `0.1.0` → `0.2.0` |
+| `feat!:` or a `BREAKING CHANGE:` footer | minor — `0.2.0` → `0.3.0` |
+| `docs:`, `perf:`, `revert:` | patch, and appear in the changelog |
+| `chore:`, `ci:`, `build:`, `refactor:`, `test:`, `style:` | patch, hidden from the changelog |
+
+`bump-minor-pre-major` is set, so a breaking change bumps the minor version
+rather than jumping to 1.0.0. Remove that from `release-please-config.json`
+when you are ready to commit to a stable API.
+
+To force a specific version, add a `Release-As: 1.0.0` footer to a commit on
+`main`.
+
+### Never edit these by hand
+
+`CHANGELOG.md`, the `version` in `pyproject.toml`, and the `groupme-mcp-server`
+version in `uv.lock` are all generated. Hand edits will be overwritten by the
+next release pull request.
 
 ### Rehearsing a release
 
@@ -134,15 +153,17 @@ publish to **TestPyPI** instead. That exercises the same build and the same
 OIDC handshake against a throwaway index, and re-runs are safe because the
 TestPyPI upload uses `skip-existing`.
 
-### If a release fails
+### Notes on the machinery
 
-Fix the problem, then delete and re-push the tag:
+There are **no PyPI API tokens** in this project. PyPI authenticates the
+workflow with a short-lived OIDC token scoped to this repository, this workflow
+file, and the `pypi` GitHub environment — which only `v*` tags may deploy to.
 
-```bash
-git tag -d v0.1.1 && git push origin :refs/tags/v0.1.1
-```
+Release Please signs its tag push with a **GitHub App token**, not
+`GITHUB_TOKEN`. GitHub deliberately refuses to trigger workflows from events
+created by `GITHUB_TOKEN`, so without the App token the tag would appear and
+`release.yml` would never run.
 
-Note that the `release-tags` ruleset blocks tag updates and deletions for
-everyone except a repository admin, and that **PyPI never permits re-uploading
-a version number**, even after you delete the release. If a broken artifact
-reaches PyPI, yank it and ship a new patch version.
+**PyPI never permits re-uploading a version number**, even after you delete the
+release. If a broken artifact reaches PyPI, yank it and let Release Please cut
+the next patch.
