@@ -76,9 +76,14 @@ jobs:
       - run: uv sync --all-groups
       - name: pytest (100% coverage enforced)
         run: uv run pytest
+      # The 100% gate is enforced by pytest itself (coverage fail_under) before
+      # this step runs, and by the codecov/project and codecov/patch checks.
+      # This upload is reporting only, so a flaky OIDC token service must not
+      # fail the build.
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
+        continue-on-error: true
         with:
           files: ./coverage.xml
           fail_ci_if_error: true
