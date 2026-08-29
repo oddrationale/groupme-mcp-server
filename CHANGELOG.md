@@ -7,6 +7,13 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Do not edit entries by hand — they are regenerated from commit history. See
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how a release is cut.
 
+## [0.2.1](https://github.com/oddrationale/groupme-mcp-server/compare/v0.2.0...v0.2.1) (2026-08-29)
+
+
+### Documentation
+
+* point the Scorecard badge at the canonical api.scorecard.dev host ([#20](https://github.com/oddrationale/groupme-mcp-server/issues/20)) ([17b3140](https://github.com/oddrationale/groupme-mcp-server/commit/17b31405572ee7098d675a6746b342559a680a4b))
+
 ## [0.2.0](https://github.com/oddrationale/groupme-mcp-server/compare/v0.1.0...v0.2.0) (2026-08-29)
 
 
