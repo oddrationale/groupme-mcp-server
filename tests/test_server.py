@@ -65,4 +65,4 @@ def test_main_runs_the_server(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_import_configured_observability() -> None:
     """Importing server.py must have run the observability setup."""
-    assert observability._configured is True
+    assert observability._guard.done is True

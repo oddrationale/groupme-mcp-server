@@ -35,7 +35,7 @@ def fresh_logger(monkeypatch: pytest.MonkeyPatch) -> Iterator[logging.Logger]:
     handlers = list(logger.handlers)
     level = logger.level
     propagate = logger.propagate
-    monkeypatch.setattr(observability, "_configured", False)
+    monkeypatch.setattr(observability._guard, "done", False)
     yield logger
     logger.handlers = handlers
     logger.setLevel(level)
