@@ -26,6 +26,9 @@ jobs:
   release-please:
     name: Maintain the release pull request
     runs-on: ubuntu-latest
+    # Skip cleanly until the App credentials exist, so a fresh clone or fork
+    # does not fail on every push. See CONTRIBUTING.md for the setup.
+    if: vars.RELEASE_PLEASE_APP_ID != ''
     # No GITHUB_TOKEN permissions are needed: every write is made with the
     # short-lived App token minted below.
     permissions: {}
