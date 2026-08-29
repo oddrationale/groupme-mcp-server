@@ -33,6 +33,10 @@ classifiers = [
 ]
 dependencies = [
     "fastmcp>=3.4.7,<4",
+    "httpx2>=2.12,<3",
+    "opentelemetry-exporter-otlp-proto-http>=1.44",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
+    "opentelemetry-sdk>=1.44",
     "pydantic-settings>=2.15,<3",
 ]
 
@@ -144,6 +148,10 @@ ban-relative-imports = "all"
 
 [tool.ruff.lint.flake8-type-checking]
 strict = true
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "pydantic_settings.BaseSettings",
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["groupme_mcp_server"]

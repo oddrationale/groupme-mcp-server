@@ -31,7 +31,8 @@ Or point an MCP client at it directly:
       "command": "uvx",
       "args": ["groupme-mcp-server"],
       "env": {
-        "GROUPME_MCP_LOG_LEVEL": "INFO"
+        "GROUPME_ACCESS_TOKEN": "your-token-from-dev.groupme.com",
+        "GROUPME_LOG_LEVEL": "INFO"
       }
     }
   }
@@ -40,12 +41,18 @@ Or point an MCP client at it directly:
 
 ## Configuration
 
-All settings are read from the environment with the `GROUPME_MCP_` prefix, or
+All settings are read from the environment with the `GROUPME_` prefix, or
 from a local `.env` file. See [`.env.example`](.env.example).
 
-| Variable                 | Default | Description                                                     |
-| ------------------------ | ------- | --------------------------------------------------------------- |
-| `GROUPME_MCP_LOG_LEVEL`  | `INFO`  | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`.              |
+| Variable                    | Default                       | Description                                                        |
+| --------------------------- | ----------------------------- | ------------------------------------------------------------------ |
+| `GROUPME_ACCESS_TOKEN`      | *(unset)*                     | GroupMe API token from <https://dev.groupme.com>. Optional at startup; required when a tool calls the API. |
+| `GROUPME_LOG_LEVEL`         | `INFO`                        | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`.                |
+| `GROUPME_API_BASE_URL`      | `https://api.groupme.com/v3`  | GroupMe REST API base URL (override mainly for testing).           |
+| `GROUPME_IMAGE_API_BASE_URL`| `https://image.groupme.com`   | GroupMe image-upload service base URL.                             |
+
+Tracing is opt-in: spans are exported only when `OTEL_EXPORTER_OTLP_ENDPOINT`
+is set (and `OTEL_SDK_DISABLED` is not truthy).
 
 ## Development
 

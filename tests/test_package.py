@@ -10,6 +10,11 @@ def test_version_is_exported() -> None:
 
 def test_public_api() -> None:
     assert set(groupme_mcp_server.__all__) == {
+        "GroupMeApiError",
+        "GroupMeAuthError",
+        "GroupMeClient",
+        "GroupMeNotFoundError",
+        "GroupMeRateLimitError",
         "Settings",
         "__version__",
         "get_settings",
