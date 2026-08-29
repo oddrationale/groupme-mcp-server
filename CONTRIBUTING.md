@@ -105,12 +105,44 @@ Horizon builds with `uv sync --frozen --no-dev`. Two consequences:
 
 ## Releasing
 
-Maintainer only:
+Maintainer only.
 
 1. Bump the version: `uv version --bump patch|minor|major`.
 2. Update `CHANGELOG.md`.
-3. Commit, then tag: `git tag -a v0.1.1 -m "v0.1.1" && git push --follow-tags`.
+3. Open a PR for those two changes and merge it.
+4. Tag the merge commit and push:
+
+   ```bash
+   git switch main && git pull
+   git tag -a v0.1.1 -m "v0.1.1"
+   git push --follow-tags
+   ```
 
 The tag triggers `release.yml`, which verifies the tag matches the project
-version, builds, attests provenance, publishes to PyPI via Trusted Publishing,
-and cuts a GitHub release.
+version, builds, attests build provenance, publishes to PyPI via Trusted
+Publishing, and cuts a GitHub release with generated notes.
+
+There are **no API tokens** anywhere in this project. PyPI authenticates the
+workflow with a short-lived OIDC token, scoped to this repository, this
+workflow file, and the `pypi` GitHub environment — which only `v*` tags may
+deploy to.
+
+### Rehearsing a release
+
+Run the `Release` workflow manually (`workflow_dispatch`, from `main`) to
+publish to **TestPyPI** instead. That exercises the same build and the same
+OIDC handshake against a throwaway index, and re-runs are safe because the
+TestPyPI upload uses `skip-existing`.
+
+### If a release fails
+
+Fix the problem, then delete and re-push the tag:
+
+```bash
+git tag -d v0.1.1 && git push origin :refs/tags/v0.1.1
+```
+
+Note that the `release-tags` ruleset blocks tag updates and deletions for
+everyone except a repository admin, and that **PyPI never permits re-uploading
+a version number**, even after you delete the release. If a broken artifact
+reaches PyPI, yank it and ship a new patch version.
