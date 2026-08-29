@@ -65,7 +65,7 @@ async def test_group_send_posts_to_the_group_endpoint(
     requests = groupme_transport(group_send_handler)
     async with Client(mcp) as client:
         result = await client.call_tool(
-            "send_message", {"target": GROUP_TARGET, "text": "Hello everyone!"}
+            "send_message", {"conversation": GROUP_TARGET, "text": "Hello everyone!"}
         )
     body = json.loads(requests[0].content)
     assert body == {
@@ -89,7 +89,9 @@ async def test_group_send_posts_to_the_group_endpoint(
 async def test_direct_send_routes_the_recipient(groupme_transport: TransportInstaller) -> None:
     requests = groupme_transport(direct_send_handler)
     async with Client(mcp) as client:
-        result = await client.call_tool("send_message", {"target": DIRECT_TARGET, "text": "Hi!"})
+        result = await client.call_tool(
+            "send_message", {"conversation": DIRECT_TARGET, "text": "Hi!"}
+        )
     body = json.loads(requests[0].content)
     assert body == {
         "direct_message": {
@@ -113,8 +115,8 @@ async def test_source_guid_is_a_fresh_uuid4_per_call(
 ) -> None:
     requests = groupme_transport(group_send_handler)
     async with Client(mcp) as client:
-        await client.call_tool("send_message", {"target": GROUP_TARGET, "text": "one"})
-        await client.call_tool("send_message", {"target": GROUP_TARGET, "text": "two"})
+        await client.call_tool("send_message", {"conversation": GROUP_TARGET, "text": "one"})
+        await client.call_tool("send_message", {"conversation": GROUP_TARGET, "text": "two"})
     guids = [json.loads(request.content)["message"]["source_guid"] for request in requests]
     assert len(set(guids)) == 2  # GroupMe silently dedups reused guids
     for guid in guids:
@@ -126,7 +128,7 @@ async def test_reply_becomes_a_reply_attachment(groupme_transport: TransportInst
     async with Client(mcp) as client:
         await client.call_tool(
             "send_message",
-            {"target": GROUP_TARGET, "text": "replying", "reply_to_message_id": "m0"},
+            {"conversation": GROUP_TARGET, "text": "replying", "reply_to_message_id": "m0"},
         )
     body = json.loads(requests[0].content)
     assert body["message"]["attachments"] == [
@@ -141,7 +143,7 @@ async def test_groupme_image_url_is_attached_directly(
     async with Client(mcp) as client:
         result = await client.call_tool(
             "send_message",
-            {"target": GROUP_TARGET, "text": "look", "image_url": GROUPME_IMAGE_URL},
+            {"conversation": GROUP_TARGET, "text": "look", "image_url": GROUPME_IMAGE_URL},
         )
     body = json.loads(requests[0].content)
     assert body["message"]["attachments"] == [{"type": "image", "url": GROUPME_IMAGE_URL}]
@@ -164,7 +166,8 @@ async def test_non_groupme_image_url_is_rejected_before_the_api(
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match="image-service") as excinfo:
             await client.call_tool(
-                "send_message", {"target": GROUP_TARGET, "text": "look", "image_url": image_url}
+                "send_message",
+                {"conversation": GROUP_TARGET, "text": "look", "image_url": image_url},
             )
     assert "not supported yet" in str(excinfo.value)
     assert "A valid call looks like" in str(excinfo.value)
@@ -177,7 +180,9 @@ async def test_overlong_text_is_rejected_before_the_api(
     requests = groupme_transport(group_send_handler)
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match="at most 1000") as excinfo:
-            await client.call_tool("send_message", {"target": GROUP_TARGET, "text": "x" * 1001})
+            await client.call_tool(
+                "send_message", {"conversation": GROUP_TARGET, "text": "x" * 1001}
+            )
     assert "1001 characters" in str(excinfo.value)
     assert requests == []
 
@@ -188,7 +193,7 @@ async def test_empty_text_without_attachments_is_rejected(
     requests = groupme_transport(group_send_handler)
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match="text is empty"):
-            await client.call_tool("send_message", {"target": GROUP_TARGET, "text": "   "})
+            await client.call_tool("send_message", {"conversation": GROUP_TARGET, "text": "   "})
     assert requests == []
 
 
@@ -198,27 +203,28 @@ async def test_attachment_only_message_may_have_empty_text(
     requests = groupme_transport(group_send_handler)
     async with Client(mcp) as client:
         result = await client.call_tool(
-            "send_message", {"target": GROUP_TARGET, "text": "", "image_url": GROUPME_IMAGE_URL}
+            "send_message",
+            {"conversation": GROUP_TARGET, "text": "", "image_url": GROUPME_IMAGE_URL},
         )
     assert json.loads(requests[0].content)["message"]["text"] == ""
     assert result.structured_content is not None
 
 
 @pytest.mark.parametrize(
-    "target",
+    "conversation",
     [
         {"group_id": "42", "other_user_id": "7"},  # no discriminator
         {"kind": "group", "group_id": "42", "other_user_id": "7"},  # extras forbidden
         {"kind": "direct", "other_user_id": "7", "group_id": "42"},  # extras forbidden
     ],
 )
-async def test_target_mixing_ids_is_unrepresentable(
-    groupme_transport: TransportInstaller, target: dict[str, str]
+async def test_conversation_mixing_ids_is_unrepresentable(
+    groupme_transport: TransportInstaller, conversation: dict[str, str]
 ) -> None:
     requests = groupme_transport(group_send_handler)
     async with Client(mcp) as client:
         with pytest.raises(ToolError):
-            await client.call_tool("send_message", {"target": target, "text": "hello"})
+            await client.call_tool("send_message", {"conversation": conversation, "text": "hello"})
     assert requests == []
 
 
@@ -234,7 +240,9 @@ async def test_message_text_is_never_logged_at_info_or_above(
     user_text = "the launch code is hunter2"
     with caplog.at_level(logging.INFO):
         async with Client(mcp) as client:
-            await client.call_tool("send_message", {"target": GROUP_TARGET, "text": user_text})
+            await client.call_tool(
+                "send_message", {"conversation": GROUP_TARGET, "text": user_text}
+            )
     messages = [record.getMessage() for record in caplog.records]
     assert any("m100" in message for message in messages)  # ids are logged...
     for message in messages:  # ...message content never is

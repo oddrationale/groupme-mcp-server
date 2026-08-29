@@ -133,8 +133,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "scripts/*.py" = ["INP001"] # standalone hook scripts, not a package
 # FastMCP resolves tool signatures with get_type_hints at registration time,
-# so annotation-only imports must still exist at runtime in tool modules.
-"src/groupme_mcp_server/tools/*.py" = ["TC001"]
+# so annotation-only imports (first- or third-party, e.g. fastmcp.Context)
+# must still exist at runtime in tool modules.
+"src/groupme_mcp_server/tools/*.py" = ["TC001", "TC002"]
 "tests/**/*.py" = [
     "D100",    # tests do not need module docstrings
     "D103",    # tests do not need function docstrings
@@ -152,6 +153,7 @@ ban-relative-imports = "all"
 [tool.ruff.lint.flake8-type-checking]
 strict = true
 runtime-evaluated-base-classes = [
+    "groupme_mcp_server.models.GroupMeModel",
     "pydantic.BaseModel",
     "pydantic_settings.BaseSettings",
 ]

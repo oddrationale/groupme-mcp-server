@@ -56,6 +56,9 @@ MAX_MESSAGE_TEXT_LENGTH = 1000
 GROUPME_IMAGE_HOSTS = frozenset({"i.groupme.com", "image.groupme.com"})
 """Hosts of GroupMe's image service — the only image URLs a message can attach."""
 
+LeaderboardPeriod = Literal["day", "week", "month"]
+"""Time window accepted by the likes leaderboard endpoint."""
+
 
 class GroupMeModel(BaseModel):
     """Base class for all GroupMe domain models: frozen, extras ignored."""

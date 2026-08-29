@@ -15,7 +15,13 @@ def test_server_instance() -> None:
     assert "GroupMe" in mcp.instructions
 
 
-READ_TOOLS = ("get_conversation_context", "list_conversations", "read_messages")
+READ_TOOLS = (
+    "get_conversation_context",
+    "get_highlights",
+    "list_conversations",
+    "read_messages",
+    "search_messages",
+)
 WRITE_TOOLS = ("react_to_message", "send_message")
 
 
@@ -40,7 +46,8 @@ async def test_all_tools_carry_honest_annotations() -> None:
             # Sending is the only non-idempotent tool: repeats post duplicates.
             assert annotations.idempotentHint is (tool.name != "send_message")
             assert tool.description is not None
-            assert "Use this" in tool.description or "idempotent" in tool.description
+            # Consistency polish: every tool description states when to use it.
+            assert "Use this" in tool.description
 
 
 def test_instructions_orient_an_agent() -> None:

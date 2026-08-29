@@ -13,11 +13,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
+# LeaderboardPeriod is a pydantic field annotation below, so it must exist at
+# runtime even though it is "only" a type.
 from groupme_mcp_server.models import (
     Group,
     GroupMeModel,
     GroupRef,
     ImageAttachment,
+    LeaderboardPeriod,
     LocationAttachment,
     MentionsAttachment,
     ReplyAttachment,
@@ -28,6 +31,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from groupme_mcp_server.models import Attachment, DirectChat, DirectRef, Member, Message
+    from groupme_mcp_server.search import SearchScan
 
 ResponseFormat = Literal["concise", "detailed"]
 """How much detail a tool should include in its result."""
@@ -167,6 +171,70 @@ class ReactionResult(GroupMeModel):
     conversation_id: str
     message_id: str
     confirmation: str
+
+
+class MessageSearchPage(GroupMeModel):
+    """The result of ``search_messages``: matches in scan order (newest first).
+
+    The scan is honest about its own limits: ``messages_scanned`` counts every
+    message examined, ``oldest_message_reached`` says whether the scan hit the
+    beginning of the conversation's history, and ``note`` calls out any
+    truncation — a scan stopped by its cap is never silent. ``next_before_id``
+    is the oldest message id scanned; pass it to ``read_messages`` as
+    ``before_id`` to keep working backwards through unscanned history.
+    """
+
+    matches: tuple[MessageView, ...]
+    count: int
+    messages_scanned: int
+    oldest_message_reached: bool
+    next_before_id: str | None = None
+    note: str | None = None
+
+
+class HighlightedMessage(GroupMeModel):
+    """One top-liked message in a ``get_highlights`` result.
+
+    ``preview`` is a one-line text preview; ``sender_id`` and ``created_at``
+    are detailed-only.
+    """
+
+    message_id: str
+    sender_name: str
+    likes: int
+    preview: str
+    sent: str
+    sender_id: str | None = None
+    created_at: str | None = None
+
+
+class MemberHighlight(GroupMeModel):
+    """One member's aggregate over a group's most-liked messages.
+
+    ``messages_in_top`` and ``likes_received`` count only the leaderboard's
+    top-liked messages for the period, not the group's full history.
+    ``user_id`` is detailed-only.
+    """
+
+    name: str
+    messages_in_top: int
+    likes_received: int
+    user_id: str | None = None
+
+
+class GroupHighlights(GroupMeModel):
+    """The result of ``get_highlights``: what mattered in one group.
+
+    Built from GroupMe's likes leaderboard for the period: the top-liked
+    messages plus per-member aggregates over those messages. ``note`` is set
+    when the period has no liked messages.
+    """
+
+    group_id: str
+    period: LeaderboardPeriod
+    top_messages: tuple[HighlightedMessage, ...]
+    top_members: tuple[MemberHighlight, ...]
+    note: str | None = None
 
 
 def relative_age(moment: datetime, now: datetime) -> str:
@@ -419,12 +487,12 @@ def build_message_page(
     )
 
 
-def sent_message_view(message: Message, target: GroupRef | DirectRef) -> SentMessage:
+def sent_message_view(message: Message, conversation: GroupRef | DirectRef) -> SentMessage:
     """Render the confirmation for a just-sent message.
 
     Args:
         message: The created message as GroupMe echoed it back.
-        target: The conversation reference the caller sent to.
+        conversation: The conversation reference the caller sent to.
 
     Returns:
         The confirmation view: ids for chaining (into ``react_to_message``
@@ -432,9 +500,11 @@ def sent_message_view(message: Message, target: GroupRef | DirectRef) -> SentMes
     """
     return SentMessage(
         message_id=str(message.id),
-        kind=target.kind,
-        group_id=str(target.group_id) if isinstance(target, GroupRef) else None,
-        other_user_id=None if isinstance(target, GroupRef) else str(target.other_user_id),
+        kind=conversation.kind,
+        group_id=str(conversation.group_id) if isinstance(conversation, GroupRef) else None,
+        other_user_id=(
+            None if isinstance(conversation, GroupRef) else str(conversation.other_user_id)
+        ),
         conversation_id=(
             str(message.conversation_id) if message.conversation_id is not None else None
         ),
@@ -515,4 +585,172 @@ def build_group_context(
         ),
         image_url=group.image_url if detailed else None,
         updated_at=_iso(group.updated_at) if detailed else None,
+    )
+
+
+def search_note(scan: SearchScan, limit: int) -> str | None:
+    """Explain how a finished search scan ended, when it needs explaining.
+
+    Pure honesty policy for ``search_messages``: any scan that stopped short
+    of the full history gets a note saying what was and was not searched.
+
+    Args:
+        scan: The completed scan state.
+        limit: The number of matches the caller asked for.
+
+    Returns:
+        A note for a capped scan (found fewer than ``limit`` without
+        reaching the oldest message), an early stop (found ``limit`` with
+        history left), or a fully scanned no-match search; ``None`` when the
+        result needs no caveat.
+    """
+    found = len(scan.matches)
+    if found < limit and not scan.oldest_reached:
+        return (
+            f"Scan cap reached: examined {scan.scanned} message(s) and found {found} of the "
+            f"requested {limit} match(es); older history was NOT searched. Raise "
+            "max_messages_scanned, or continue manually with read_messages using "
+            "next_before_id as before_id."
+        )
+    if found >= limit and not scan.oldest_reached:
+        return (
+            f"Stopped after finding the requested {limit} match(es); older messages were not "
+            "searched, so more matches may exist further back. Continue with a higher limit, "
+            "or with read_messages using next_before_id as before_id."
+        )
+    if found == 0:
+        return "No messages matched; the conversation's entire history was scanned."
+    return None
+
+
+def build_search_page(
+    scan: SearchScan, limit: int, now: datetime, *, detailed: bool
+) -> MessageSearchPage:
+    """Assemble the ``search_messages`` result from a completed scan.
+
+    Args:
+        scan: The completed scan state.
+        limit: The number of matches the caller asked for.
+        now: The current (aware) time, for relative ages.
+        detailed: Include the detailed-only fields.
+
+    Returns:
+        The search page: matches newest first, honest scan accounting, and a
+        [`search_note`][groupme_mcp_server.rendering.search_note] when the
+        scan stopped short of the full history.
+    """
+    return MessageSearchPage(
+        matches=tuple(message_view(m, now, detailed=detailed) for m in scan.matches),
+        count=len(scan.matches),
+        messages_scanned=scan.scanned,
+        oldest_message_reached=scan.oldest_reached,
+        next_before_id=(str(scan.last_scanned_id) if scan.last_scanned_id is not None else None),
+        note=search_note(scan, limit),
+    )
+
+
+TOP_MESSAGES_LIMIT = 10
+"""Most-liked messages shown by ``get_highlights``."""
+
+TOP_MEMBERS_LIMIT = 5
+"""Members shown in the ``get_highlights`` member summary."""
+
+EMPTY_HIGHLIGHTS_NOTE = (
+    "No liked messages in this group for the requested period, so there is nothing to highlight."
+)
+"""Note attached to a ``get_highlights`` result when the leaderboard is empty."""
+
+
+def rank_by_likes(messages: Iterable[Message]) -> list[Message]:
+    """Order messages by like count, most liked first; ties break newest first.
+
+    Args:
+        messages: Messages in any order.
+
+    Returns:
+        A new list, most liked first. The leaderboard endpoint already claims
+        this order, but it is undocumented, so it is not trusted.
+    """
+    return sorted(messages, key=lambda m: (-m.favorited_by_count, -m.created_at.timestamp()))
+
+
+def member_highlights(
+    ranked: Sequence[Message], *, detailed: bool, limit: int = TOP_MEMBERS_LIMIT
+) -> tuple[MemberHighlight, ...]:
+    """Aggregate per-member activity over the leaderboard's messages.
+
+    Args:
+        ranked: The leaderboard messages, most liked first (each member's
+            display name is taken from their most-liked message).
+        detailed: Include the detailed-only ``user_id``.
+        limit: Maximum members to return.
+
+    Returns:
+        Members ordered by likes received, then messages in the top, then
+        name.
+    """
+    counts: dict[str, int] = {}
+    likes: dict[str, int] = {}
+    names: dict[str, str] = {}
+    for message in ranked:
+        sender = str(message.sender_id)
+        counts[sender] = counts.get(sender, 0) + 1
+        likes[sender] = likes.get(sender, 0) + message.favorited_by_count
+        names.setdefault(sender, message.sender_name)
+    order = sorted(counts, key=lambda sender: (-likes[sender], -counts[sender], names[sender]))
+    return tuple(
+        MemberHighlight(
+            name=names[sender],
+            messages_in_top=counts[sender],
+            likes_received=likes[sender],
+            user_id=sender if detailed else None,
+        )
+        for sender in order[:limit]
+    )
+
+
+def _highlighted_message(message: Message, now: datetime, *, detailed: bool) -> HighlightedMessage:
+    return HighlightedMessage(
+        message_id=str(message.id),
+        sender_name=message.sender_name,
+        likes=message.favorited_by_count,
+        preview=preview_text(message.text),
+        sent=relative_age(message.created_at, now),
+        sender_id=str(message.sender_id) if detailed else None,
+        created_at=message.created_at.isoformat() if detailed else None,
+    )
+
+
+def build_group_highlights(
+    messages: Iterable[Message],
+    group_id: str,
+    period: LeaderboardPeriod,
+    now: datetime,
+    *,
+    detailed: bool,
+) -> GroupHighlights:
+    """Assemble the ``get_highlights`` result from leaderboard messages.
+
+    Args:
+        messages: The group's most-liked messages for the period, in any
+            order.
+        group_id: The group they belong to.
+        period: The leaderboard window that produced them.
+        now: The current (aware) time, for relative ages.
+        detailed: Include the detailed-only fields.
+
+    Returns:
+        The top [`TOP_MESSAGES_LIMIT`][groupme_mcp_server.rendering.TOP_MESSAGES_LIMIT]
+        messages plus the member summary, or an empty result with an
+        explanatory ``note``.
+    """
+    ranked = rank_by_likes(messages)
+    return GroupHighlights(
+        group_id=group_id,
+        period=period,
+        top_messages=tuple(
+            _highlighted_message(m, now, detailed=detailed) for m in ranked[:TOP_MESSAGES_LIMIT]
+        ),
+        top_members=member_highlights(ranked, detailed=detailed),
+        note=EMPTY_HIGHLIGHTS_NOTE if not ranked else None,
     )
