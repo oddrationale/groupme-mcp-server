@@ -15,34 +15,37 @@ def test_server_instance() -> None:
     assert "GroupMe" in mcp.instructions
 
 
+READ_TOOLS = ("get_conversation_context", "list_conversations", "read_messages")
+WRITE_TOOLS = ("react_to_message", "send_message")
+
+
 async def test_client_can_connect_in_memory() -> None:
-    """The server is loadable and exposes exactly the read toolset."""
+    """The server is loadable and exposes exactly the expected toolset."""
     async with Client(mcp) as client:
         tools = await client.list_tools()
-        assert sorted(t.name for t in tools) == [
-            "get_conversation_context",
-            "list_conversations",
-            "read_messages",
-        ]
+        assert sorted(t.name for t in tools) == sorted(READ_TOOLS + WRITE_TOOLS)
         assert await client.list_resources() == []
         assert await client.list_prompts() == []
 
 
-async def test_all_tools_are_annotated_read_only() -> None:
+async def test_all_tools_carry_honest_annotations() -> None:
     async with Client(mcp) as client:
         for tool in await client.list_tools():
-            assert tool.annotations is not None, tool.name
-            assert tool.annotations.readOnlyHint is True
-            assert tool.annotations.destructiveHint is False
-            assert tool.annotations.idempotentHint is True
-            assert tool.annotations.openWorldHint is True
+            annotations = tool.annotations
+            assert annotations is not None, tool.name
+            # Every tool talks to the external GroupMe API; none destroys data.
+            assert annotations.openWorldHint is True
+            assert annotations.destructiveHint is False
+            assert annotations.readOnlyHint is (tool.name in READ_TOOLS)
+            # Sending is the only non-idempotent tool: repeats post duplicates.
+            assert annotations.idempotentHint is (tool.name != "send_message")
             assert tool.description is not None
-            assert "Use this" in tool.description
+            assert "Use this" in tool.description or "idempotent" in tool.description
 
 
 def test_instructions_orient_an_agent() -> None:
     assert mcp.instructions is not None
-    for name in ("list_conversations", "read_messages", "get_conversation_context"):
+    for name in READ_TOOLS + WRITE_TOOLS:
         assert name in mcp.instructions
 
 
