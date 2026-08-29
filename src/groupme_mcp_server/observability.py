@@ -162,6 +162,30 @@ def _sanitize_covers_token(fields: list[str]) -> bool:
     return pattern.search(_TOKEN_HEADER) is not None
 
 
+def _combine_valid_fields(fields: list[str], seed: list[str]) -> tuple[list[str], list[str]]:
+    """Validate sanitize fields incrementally, the way OTel compiles them.
+
+    OTel joins the sanitize fields with ``"|"`` into one regex, so each field
+    must compile in combination with everything accepted before it (e.g. an
+    inline ``"(?i)foo"`` compiles alone but not mid-alternation).
+
+    Args:
+        fields: Candidate sanitize-field patterns, in order.
+        seed: Already-accepted patterns placed ahead of ``fields``.
+
+    Returns:
+        A ``(valid, dropped)`` pair, where ``valid`` starts with ``seed``.
+    """
+    valid = list(seed)
+    dropped: list[str] = []
+    for field in fields:
+        if _compiles("|".join([*valid, field])):
+            valid.append(field)
+        else:
+            dropped.append(field)
+    return valid, dropped
+
+
 def _ensure_token_header_sanitized() -> None:
     """Force OTel header capture to redact the GroupMe token header.
 
@@ -170,28 +194,38 @@ def _ensure_token_header_sanitized() -> None:
     (e.g. to ``X-.*``). Listing ``X-Access-Token`` in the sanitize-fields
     variable guarantees the secret is recorded as ``[REDACTED]`` instead.
     Invalid regex fields are dropped (OTel would otherwise crash compiling
-    the joined pattern at capture time, leaving nothing sanitized). The
-    instrumentation reads the variable at transport construction, so this
-    runs just before the wrapper is built.
+    the joined pattern at capture time, leaving nothing sanitized).
+
+    When the mandatory token rule is needed it is *prepended*, never
+    appended: a user field ahead of it could otherwise neutralize it — e.g.
+    the verbose-mode pattern ``"(?x)Authorization#comment"`` compiles, but
+    its trailing comment swallows every alternative joined after it. As a
+    final guarantee, the combined fields are re-checked with OTel's own match
+    semantics; user fields are dropped (with a warning) rather than ever
+    shipping a variable that fails to redact the token. The instrumentation
+    reads the variable at transport construction, so this runs just before
+    the wrapper is built.
     """
     current = os.environ.get(_SANITIZE_HEADERS_ENV, "")
     fields = [field.strip() for field in current.split(",") if field.strip()]
-    # OTel compiles the fields joined with "|", so validate each field in
-    # combination with the ones already accepted (e.g. an inline "(?i)foo"
-    # compiles alone but not mid-alternation).
-    valid_fields: list[str] = []
-    dropped: list[str] = []
-    for field in fields:
-        if _compiles("|".join([*valid_fields, field])):
-            valid_fields.append(field)
-        else:
-            dropped.append(field)
+    valid_fields, dropped = _combine_valid_fields(fields, [])
+    if not _sanitize_covers_token(valid_fields):
+        # Seed the mandatory rule first; user fields that no longer compile
+        # after it (e.g. "(?x)..." global flags) are dropped.
+        valid_fields, incompatible = _combine_valid_fields(valid_fields, [_TOKEN_HEADER])
+        dropped.extend(incompatible)
+        if not _sanitize_covers_token(valid_fields):
+            # Belt and braces: the rule is the first alternative, so this
+            # should be unreachable — but if the combined pattern ever fails
+            # OTel's semantics, only the mandatory rule survives.
+            dropped.extend(valid_fields[1:])
+            valid_fields = [_TOKEN_HEADER]
     if dropped:
         logging.getLogger(LOGGER_NAME).warning(
-            "Dropping invalid regex(es) from %s: %s", _SANITIZE_HEADERS_ENV, ", ".join(dropped)
+            "Dropping invalid or incompatible regex(es) from %s: %s",
+            _SANITIZE_HEADERS_ENV,
+            ", ".join(dropped),
         )
-    if not _sanitize_covers_token(valid_fields):
-        valid_fields.append(_TOKEN_HEADER)
     os.environ[_SANITIZE_HEADERS_ENV] = ",".join(valid_fields)
 
 

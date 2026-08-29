@@ -22,8 +22,8 @@ from groupme_mcp_server.errors import GroupMeAuthError
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
-_CONTROL_CHAR_MAX = 0x20  # everything below U+0020 is a C0 control character
-_DELETE_CHAR = 0x7F
+_TOKEN_CHAR_MIN = 0x21  # "!" — the first visible ASCII character
+_TOKEN_CHAR_MAX = 0x7E  # "~" — the last visible ASCII character
 
 
 class Settings(BaseSettings):
@@ -53,17 +53,20 @@ class Settings(BaseSettings):
         """Return the access token, or fail with actionable guidance.
 
         Called at API-call time so the server can still start (and be
-        inspected) without a token. Tokens containing control characters are
-        rejected here so they can never reach the HTTP layer, whose header
-        errors would echo the value back.
+        inspected) without a token. Tokens are restricted to visible ASCII
+        characters: anything else — control characters, whitespace (edge
+        whitespace included), non-ASCII — is rejected here so it can never
+        reach the HTTP layer, whose header errors echo the raw value back
+        (and instrumented spans record that exception, cause chain and all,
+        before the client can strip it).
 
         Returns:
             The configured token.
 
         Raises:
             GroupMeAuthError: If no token is configured, or the token
-                contains control characters (the message never includes the
-                token itself).
+                contains characters outside the visible ASCII range (the
+                message never includes the token itself).
         """
         if self.access_token is None:
             msg = (
@@ -72,11 +75,12 @@ class Settings(BaseSettings):
             )
             raise GroupMeAuthError(msg)
         token = self.access_token.get_secret_value()
-        if any(ord(ch) < _CONTROL_CHAR_MAX or ord(ch) == _DELETE_CHAR for ch in token):
+        if any(not (_TOKEN_CHAR_MIN <= ord(ch) <= _TOKEN_CHAR_MAX) for ch in token):
             msg = (
-                "GroupMe access token contains control characters and cannot be "
-                "sent as a header. Set GROUPME_ACCESS_TOKEN to the exact token "
-                "from https://dev.groupme.com"
+                "GroupMe access token contains characters that cannot be sent "
+                "in a header (whitespace, control characters, or non-ASCII). "
+                "Set GROUPME_ACCESS_TOKEN to the exact token from "
+                "https://dev.groupme.com"
             )
             raise GroupMeAuthError(msg)
         return self.access_token

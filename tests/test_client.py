@@ -7,6 +7,9 @@ from typing import Any
 import httpx2
 import pytest
 from opentelemetry.instrumentation.httpx import AsyncOpenTelemetryTransportHttpx2
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import SecretStr
 
 from groupme_mcp_server.client import GroupMeClient
@@ -385,6 +388,33 @@ async def test_control_character_token_fails_before_any_request() -> None:
     with pytest.raises(GroupMeAuthError, match="control characters"):
         await client.get_me()
     assert requests == []
+
+
+async def test_padded_token_fails_before_any_request_or_span(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A whitespace-padded token must never reach the instrumented transport.
+
+    httpx2 rejects such a header value with an error that echoes it in full,
+    and the OTel-instrumented transport records that raw exception (cause
+    chain attached) on the span *before* the client's wrapper strips text —
+    so validation has to fire first: no request, no span, no token anywhere.
+    """
+    monkeypatch.setenv("OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_CLIENT_REQUEST", "X-.*")
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    requests: list[httpx2.Request] = []
+    inner = recording_transport([httpx2.Response(200, json=envelope({}))], requests)
+    transport = AsyncOpenTelemetryTransportHttpx2(inner, tracer_provider=provider)
+    padded = " padded-secret"
+    async with GroupMeClient(make_settings(padded), transport=transport) as client:
+        with pytest.raises(GroupMeAuthError) as excinfo:
+            await client.get_me()
+    assert padded.strip() not in str(excinfo.value)  # the token value never leaks
+    assert excinfo.value.__cause__ is None  # no httpx2 error chained in
+    assert requests == []
+    assert exporter.get_finished_spans() == ()
 
 
 @pytest.mark.parametrize(

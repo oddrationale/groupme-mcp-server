@@ -68,6 +68,25 @@ def test_require_access_token_rejects_control_characters() -> None:
     assert "bad" not in str(excinfo.value)  # the token value itself never leaks
 
 
+@pytest.mark.parametrize(
+    "token",
+    [
+        " padded-token",  # leading whitespace: httpx2's header error echoes it
+        "padded-token ",  # trailing whitespace
+        "\ttabbed-token",
+        "inner space",
+        "delete\x7fchar",
+        "töken",  # non-ASCII
+        "token\U0001f512",
+    ],
+)
+def test_require_access_token_rejects_non_visible_ascii(token: str) -> None:
+    settings = Settings(access_token=SecretStr(token))
+    with pytest.raises(GroupMeAuthError, match="cannot be sent") as excinfo:
+        settings.require_access_token()
+    assert token.strip() not in str(excinfo.value)  # the token value itself never leaks
+
+
 def test_rejects_unknown_log_level(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GROUPME_LOG_LEVEL", "LOUD")
     with pytest.raises(ValidationError):
