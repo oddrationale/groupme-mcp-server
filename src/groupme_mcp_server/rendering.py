@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Literal
 from groupme_mcp_server.models import (
     Group,
     GroupMeModel,
+    GroupRef,
     ImageAttachment,
     LocationAttachment,
     MentionsAttachment,
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from datetime import datetime
 
-    from groupme_mcp_server.models import Attachment, DirectChat, Member, Message
+    from groupme_mcp_server.models import Attachment, DirectChat, DirectRef, Member, Message
 
 ResponseFormat = Literal["concise", "detailed"]
 """How much detail a tool should include in its result."""
@@ -140,6 +141,32 @@ class GroupContext(GroupMeModel):
     creator_user_id: str | None = None
     image_url: str | None = None
     updated_at: str | None = None
+
+
+class SentMessage(GroupMeModel):
+    """Confirmation returned by ``send_message``.
+
+    ``conversation_id`` is the id the react/like endpoints take; for a brand
+    new direct chat GroupMe may omit it, in which case it is ``None``.
+    """
+
+    message_id: str
+    kind: Literal["group", "direct"]
+    group_id: str | None = None
+    other_user_id: str | None = None
+    conversation_id: str | None = None
+    text: str | None
+    attachments: tuple[str, ...] = ()
+    sent_at: str
+
+
+class ReactionResult(GroupMeModel):
+    """Confirmation returned by ``react_to_message``."""
+
+    action: Literal["like", "unlike"]
+    conversation_id: str
+    message_id: str
+    confirmation: str
 
 
 def relative_age(moment: datetime, now: datetime) -> str:
@@ -389,6 +416,53 @@ def build_message_page(
         messages=tuple(message_view(m, now, detailed=detailed) for m in reversed(newest_first)),
         next_before_id=str(newest_first[-1].id),
         note=None,
+    )
+
+
+def sent_message_view(message: Message, target: GroupRef | DirectRef) -> SentMessage:
+    """Render the confirmation for a just-sent message.
+
+    Args:
+        message: The created message as GroupMe echoed it back.
+        target: The conversation reference the caller sent to.
+
+    Returns:
+        The confirmation view: ids for chaining (into ``react_to_message``
+        or ``read_messages``) plus the echoed text and attachments.
+    """
+    return SentMessage(
+        message_id=str(message.id),
+        kind=target.kind,
+        group_id=str(target.group_id) if isinstance(target, GroupRef) else None,
+        other_user_id=None if isinstance(target, GroupRef) else str(target.other_user_id),
+        conversation_id=(
+            str(message.conversation_id) if message.conversation_id is not None else None
+        ),
+        text=message.text,
+        attachments=tuple(describe_attachment(a) for a in message.attachments),
+        sent_at=message.created_at.isoformat(),
+    )
+
+
+def reaction_result(
+    action: Literal["like", "unlike"], conversation_id: str, message_id: str
+) -> ReactionResult:
+    """Render the confirmation for a like or unlike.
+
+    Args:
+        action: Which reaction was performed.
+        conversation_id: The conversation the message lives in.
+        message_id: The message that was reacted to.
+
+    Returns:
+        The confirmation view, echoing the ids back.
+    """
+    verb = "Liked" if action == "like" else "Removed the like from"
+    return ReactionResult(
+        action=action,
+        conversation_id=conversation_id,
+        message_id=message_id,
+        confirmation=f"{verb} message {message_id}.",
     )
 
 

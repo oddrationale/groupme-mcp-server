@@ -19,6 +19,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Annotated, Any, Literal, NewType
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,6 +49,12 @@ MAX_MESSAGE_LIMIT = 100
 
 RATE_LIMIT_STATUSES = frozenset({420, 429})
 """Statuses GroupMe uses to signal rate limiting."""
+
+MAX_MESSAGE_TEXT_LENGTH = 1000
+"""Longest message text GroupMe accepts."""
+
+GROUPME_IMAGE_HOSTS = frozenset({"i.groupme.com", "image.groupme.com"})
+"""Hosts of GroupMe's image service — the only image URLs a message can attach."""
 
 
 class GroupMeModel(BaseModel):
@@ -454,6 +461,91 @@ def unwrap_envelope(status_code: int, payload: object) -> object | None:
         msg = f"GroupMe returned a malformed response body (HTTP {status_code})"
         raise GroupMeApiError(msg, status=status_code)
     return payload.get("response")
+
+
+def validate_outgoing_text(text: str, *, has_attachments: bool) -> None:
+    """Validate message text before it is sent to GroupMe.
+
+    Pure precondition check run *before* any HTTP request so the caller gets
+    an actionable error instead of an opaque API failure. The error text
+    reports lengths and never echoes the message content.
+
+    Args:
+        text: The message text the caller wants to send.
+        has_attachments: Whether the outgoing message carries attachments
+            (an attachment-only message may have empty text).
+
+    Raises:
+        ValueError: If the text exceeds
+            [`MAX_MESSAGE_TEXT_LENGTH`][groupme_mcp_server.models.MAX_MESSAGE_TEXT_LENGTH],
+            or is empty/whitespace with no attachments to carry the message.
+    """
+    if len(text) > MAX_MESSAGE_TEXT_LENGTH:
+        msg = (
+            f"text is {len(text)} characters but GroupMe allows at most "
+            f"{MAX_MESSAGE_TEXT_LENGTH}; shorten it or split it into several messages"
+        )
+        raise ValueError(msg)
+    if not text.strip() and not has_attachments:
+        msg = "text is empty; provide message text (or attach an image_url)"
+        raise ValueError(msg)
+
+
+def groupme_image_attachment(image_url: str) -> dict[str, Any]:
+    """Build an image attachment from a GroupMe image-service URL.
+
+    Args:
+        image_url: An ``https`` URL on one of
+            [`GROUPME_IMAGE_HOSTS`][groupme_mcp_server.models.GROUPME_IMAGE_HOSTS].
+
+    Returns:
+        The raw attachment object GroupMe expects.
+
+    Raises:
+        ValueError: If the URL is not a GroupMe image-service URL.
+            Downloading and re-uploading arbitrary images is not supported
+            yet (future work: the image-upload service).
+    """
+    parsed = urlsplit(image_url)
+    if parsed.scheme != "https" or parsed.hostname not in GROUPME_IMAGE_HOSTS:
+        hosts = " or ".join(f"https://{host}/..." for host in sorted(GROUPME_IMAGE_HOSTS))
+        msg = (
+            f"image_url must be a GroupMe image-service URL ({hosts}); "
+            "other image URLs are not supported yet, so upload the image to "
+            "GroupMe's image service first and pass the resulting URL"
+        )
+        raise ValueError(msg)
+    return {"type": "image", "url": image_url}
+
+
+def build_outgoing_attachments(
+    reply_to_message_id: MessageId | None, image_url: str | None
+) -> list[dict[str, Any]]:
+    """Compose the raw attachment list for an outgoing message.
+
+    Args:
+        reply_to_message_id: Message being replied to, if any; becomes a
+            ``reply`` attachment.
+        image_url: GroupMe image-service URL to attach, if any.
+
+    Returns:
+        The raw attachment objects, in reply-then-image order.
+
+    Raises:
+        ValueError: If ``image_url`` is not a GroupMe image-service URL.
+    """
+    attachments: list[dict[str, Any]] = []
+    if reply_to_message_id is not None:
+        attachments.append(
+            {
+                "type": "reply",
+                "reply_id": str(reply_to_message_id),
+                "base_reply_id": str(reply_to_message_id),
+            }
+        )
+    if image_url is not None:
+        attachments.append(groupme_image_attachment(image_url))
+    return attachments
 
 
 def backoff_delay(attempt: int, *, jitter: float, base: float = 0.5, cap: float = 8.0) -> float:

@@ -13,19 +13,21 @@ An [MCP](https://modelcontextprotocol.io) server that exposes the
 [FastMCP](https://gofastmcp.com) and hosted on
 [Prefect Horizon](https://gofastmcp.com/deployment/prefect-horizon).
 
-> **Status: early.** Read-only tools are implemented; write tools (sending
-> messages, likes) are not yet.
+> **Status: early.** Read tools and the core write tools (sending messages,
+> likes) are implemented; image upload is not yet.
 
 ## Tools
 
-All tools accept `response_format`: `"concise"` (default, human-readable) or
-`"detailed"` (full ids and metadata).
+The read tools accept `response_format`: `"concise"` (default, human-readable)
+or `"detailed"` (full ids and metadata).
 
 | Tool                       | What it does                                                                 |
 | -------------------------- | ---------------------------------------------------------------------------- |
 | `list_conversations`       | Merge groups and DMs into one recency-sorted list with last-message previews. |
 | `read_messages`            | Read one group or DM conversation, oldest first, with a `next_before_id` cursor. |
 | `get_conversation_context` | One group's metadata, member list, and recent messages in a single call.      |
+| `send_message`             | Post to a group or DM, optionally as a reply or with a GroupMe-hosted image.  |
+| `react_to_message`         | Like or unlike one message (ids from `read_messages` detailed format).        |
 
 ## Quick start
 
