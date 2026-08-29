@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/oddrationale/groupme-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/oddrationale/groupme-mcp-server/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/oddrationale/groupme-mcp-server/branch/main/graph/badge.svg)](https://codecov.io/gh/oddrationale/groupme-mcp-server)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/oddrationale/groupme-mcp-server/badge)](https://scorecard.dev/viewer/?uri=github.com/oddrationale/groupme-mcp-server)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/oddrationale/groupme-mcp-server/badge)](https://scorecard.dev/viewer/?uri=github.com/oddrationale/groupme-mcp-server)
 [![PyPI](https://img.shields.io/pypi/v/groupme-mcp-server.svg)](https://pypi.org/project/groupme-mcp-server/)
 [![Python](https://img.shields.io/pypi/pyversions/groupme-mcp-server.svg)](https://pypi.org/project/groupme-mcp-server/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
