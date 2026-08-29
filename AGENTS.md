@@ -87,6 +87,13 @@ src/groupme_mcp_server/
   __main__.py      # console-script entrypoint (stdio)
   server.py        # the FastMCP instance -- Horizon's entrypoint
   settings.py      # pydantic-settings configuration
+  client.py        # imperative shell: async GroupMe HTTP client (httpx2)
+  errors.py        # typed GroupMe exception hierarchy
+  models.py        # frozen pydantic models of GroupMe payloads
+  rendering.py     # functional core: view models + concise/detailed rendering
+  search.py        # functional core: client-side search scan logic
+  observability.py # stderr logging + opt-in OTel tracing
+  tools/           # one module per MCP tool + register_all()
 tests/             # top-level, mirrors src/ module names
 tests/integration/ # opt-in live/e2e suites (see "Integration tests" above)
 scripts/           # standalone git-hook helper scripts
@@ -123,8 +130,10 @@ What follows from that:
 Deployment settings live in Horizon, not in this repository: the `production`
 target tracks `main` with `deployOnSuccess`, so a build only ships after CI
 passes, and every pull request gets its own preview target automatically.
-Runtime environment variables are registered in the Horizon UI — there are
-currently none, because `Settings` has a default for every field.
+Runtime environment variables are registered in the Horizon UI. `Settings`
+reads `GROUPME_`-prefixed variables (see `.env.example`); every field has a
+default, but `GROUPME_ACCESS_TOKEN` must be registered in the Horizon UI or
+every tool call on the deployed server fails with an auth error.
 
 ## Adding a GroupMe tool
 

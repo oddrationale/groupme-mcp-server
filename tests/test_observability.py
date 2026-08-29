@@ -170,6 +170,21 @@ def test_tracing_enabled_with_endpoint(
     provider.shutdown()
 
 
+def test_tracing_respects_otel_service_name(
+    fresh_logger: logging.Logger, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    del fresh_logger
+    calls: list[object] = []
+    monkeypatch.setattr(observability, "set_tracer_provider", calls.append)
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://collector.test:4318")
+    monkeypatch.setenv("OTEL_SERVICE_NAME", "custom-name")
+    observability.configure_observability(Settings())
+    provider = calls[0]
+    assert isinstance(provider, TracerProvider)
+    assert provider.resource.attributes["service.name"] == "custom-name"
+    provider.shutdown()
+
+
 @pytest.mark.parametrize("disabled", ["1", "true", "TRUE", " yes ", "on"])
 def test_tracing_skipped_when_sdk_disabled(
     fresh_logger: logging.Logger, monkeypatch: pytest.MonkeyPatch, disabled: str

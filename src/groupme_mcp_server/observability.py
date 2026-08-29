@@ -106,7 +106,13 @@ def _tracing_enabled() -> bool:
 
 
 def _configure_tracing() -> None:
-    provider = TracerProvider(resource=Resource.create({"service.name": "groupme-mcp-server"}))
+    # Attributes passed to Resource.create take merge precedence over the
+    # OTEL_SERVICE_NAME env detector, so only supply the default name when
+    # the operator has not chosen one.
+    attributes: dict[str, str] = (
+        {} if os.environ.get("OTEL_SERVICE_NAME") else {"service.name": "groupme-mcp-server"}
+    )
+    provider = TracerProvider(resource=Resource.create(attributes))
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     set_tracer_provider(provider)
 
