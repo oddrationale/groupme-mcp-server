@@ -78,3 +78,24 @@ tokens and private message content. When reporting or reproducing an issue:
 - Workflows default to `permissions: {}` and opt into the minimum needed
 - PyPI publishing via Trusted Publishing (OIDC) with build provenance
   attestations — no long-lived API tokens exist for this project
+
+## A note on OpenSSF Scorecard findings
+
+Scorecard results are uploaded into GitHub code scanning, so a failing check
+appears alongside real findings. Scorecard reports **posture advice, not
+vulnerabilities**, and three of its checks cannot be satisfied by a
+solo-maintained repository. Those are dismissed as "won't fix" with reasons
+recorded on each alert:
+
+| Check | Why it is dismissed |
+| ----- | ------------------- |
+| `Code-Review` | GitHub does not allow approving your own pull request, so approved-changeset count is permanently zero. Changes still go through a pull request with required status checks. |
+| `Branch-Protection` | Scored 4/10 because admin bypass is enabled so the maintainer can hotfix, and required approvals are zero for the reason above. Force-push and deletion are blocked, and linear history, conversation resolution, and passing status checks are all required. |
+| `Maintained` | An age check only. It clears itself once the repository is more than 90 days old. |
+
+`Fuzzing` and `CII-Best-Practices` are left **open** — they are genuinely
+actionable, just not yet worth doing for a project with no parsing code.
+
+Dismissals persist across Scorecard's weekly re-runs, so anything newly open in
+code scanning is worth reading. If a second maintainer ever joins, revisit the
+first two: requiring one approval would fix both at once.
