@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     # Skip cleanly until the App credentials exist, so a fresh clone or fork
     # does not fail on every push. See CONTRIBUTING.md for the setup.
-    if: vars.RELEASE_PLEASE_APP_ID != ''
+    if: vars.RELEASE_PLEASE_CLIENT_ID != ''
     # No GITHUB_TOKEN permissions are needed: every write is made with the
     # short-lived App token minted below.
     permissions: {}
@@ -37,7 +37,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.RELEASE_PLEASE_APP_ID }}
+          client-id: ${{ vars.RELEASE_PLEASE_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_PLEASE_PRIVATE_KEY }}
           # Narrow the token to exactly what Release Please needs, rather than
           # inheriting every permission the App installation was granted.
