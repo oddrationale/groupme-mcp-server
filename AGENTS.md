@@ -64,19 +64,39 @@ tests/             # top-level, mirrors src/ module names
 scripts/           # standalone git-hook helper scripts
 ```
 
-## The Horizon entrypoint constraint
+## How the Horizon build actually works
 
-Prefect Horizon is configured with the entrypoint
-`src/groupme_mcp_server/server.py:mcp`. Horizon loads **that file** and looks
-for the `mcp` object.
+Verified against the build log of the live deployment, not assumed. Horizon
+builds this repository with:
 
-- Keep the module-level `mcp = FastMCP(...)` assignment in `server.py`.
-- Verify any change to it with:
-  `uv run fastmcp inspect src/groupme_mcp_server/server.py:mcp`
-  (CI runs this too).
-- Horizon installs dependencies from `pyproject.toml`. If a change makes
-  `server.py` depend on the package being *installed* (rather than merely
-  importable), verify the Horizon build still succeeds before merging.
+```
+RUN cd . && UV_PROJECT_ENVIRONMENT=/usr/local uv sync --frozen --no-dev --inexact
+RUN fastmcp inspect -f fastmcp -o /tmp/server-info.json /app/src/groupme_mcp_server/server.py:mcp
+```
+
+What follows from that:
+
+- **The package is installed**, not merely copied
+  (`+ groupme-mcp-server==0.1.0 (from file:///app)`), so `server.py` may freely
+  import `groupme_mcp_server.settings` and any other first-party module.
+- **`uv.lock` is the source of truth** and `--frozen` means a lockfile that does
+  not match `pyproject.toml` **fails the build**. Always commit the refreshed
+  lockfile after `uv add`. The `uv-lock-is-current` pre-commit hook and
+  `UV_FROZEN=1` in CI exist to catch this before Horizon does.
+- **`--no-dev` excludes the `dev` group.** Anything the server needs at runtime
+  belongs in `[project.dependencies]`, never in the dev group.
+- **Horizon runs `fastmcp inspect` itself**, so a server object that fails to
+  load fails the build. The `entrypoint` CI job runs the same command, which is
+  how you find out on the pull request instead of after merge.
+- Keep the module-level `mcp = FastMCP(...)` assignment in `server.py`; the
+  entrypoint is `src/groupme_mcp_server/server.py:mcp`.
+- Horizon ignores any `if __name__ == "__main__"` block.
+
+Deployment settings live in Horizon, not in this repository: the `production`
+target tracks `main` with `deployOnSuccess`, so a build only ships after CI
+passes, and every pull request gets its own preview target automatically.
+Runtime environment variables are registered in the Horizon UI — there are
+currently none, because `Settings` has a default for every field.
 
 ## Adding a GroupMe tool
 
