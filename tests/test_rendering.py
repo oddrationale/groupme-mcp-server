@@ -17,20 +17,29 @@ from groupme_mcp_server.models import (
     UnknownAttachment,
 )
 from groupme_mcp_server.rendering import (
+    EMPTY_HIGHLIGHTS_NOTE,
     EMPTY_MESSAGES_NOTE,
+    TOP_MEMBERS_LIMIT,
+    TOP_MESSAGES_LIMIT,
     build_group_context,
+    build_group_highlights,
     build_message_page,
+    build_search_page,
     conversation_summary,
     describe_attachment,
     last_activity,
+    member_highlights,
     member_view,
     merge_conversations,
     message_view,
     preview_text,
+    rank_by_likes,
     relative_age,
+    search_note,
     select_newest,
     sort_conversations,
 )
+from groupme_mcp_server.search import SearchScan
 
 NOW = datetime(2026, 8, 29, 12, 0, 0, tzinfo=UTC)
 
@@ -405,3 +414,182 @@ def test_build_group_context_detailed_without_creator() -> None:
     context = build_group_context(make_group("42"), [], NOW, detailed=True)
     assert context.creator_user_id is None
     assert context.last_active is None
+
+
+# --- search rendering -------------------------------------------------------
+
+
+def make_liked_message(
+    message_id: str,
+    *,
+    sender_id: str = "22",
+    sender_name: str = "Ada",
+    likes: int = 0,
+    text: str | None = "hello",
+    created_at: datetime | None = None,
+) -> Message:
+    return Message(
+        id=message_id,
+        conversation_id="42",
+        sender_id=sender_id,
+        sender_name=sender_name,
+        text=text,
+        created_at=created_at if created_at is not None else at(60),
+        favorited_by_count=likes,
+        attachments=(),
+    )
+
+
+def test_search_note_reports_a_hit_cap_never_silently() -> None:
+    scan = SearchScan(matches=(make_message("m1"),), scanned=500, last_scanned_id="m9")
+    note = search_note(scan, limit=5)
+    assert note is not None
+    assert "500" in note
+    assert "NOT searched" in note
+    assert "max_messages_scanned" in note
+
+
+def test_search_note_flags_an_early_stop_with_history_left() -> None:
+    scan = SearchScan(matches=(make_message("m1"), make_message("m2")), scanned=40)
+    note = search_note(scan, limit=2)
+    assert note is not None
+    assert "more matches may exist" in note
+
+
+def test_search_note_explains_a_fully_scanned_no_match_search() -> None:
+    scan = SearchScan(matches=(), scanned=12, oldest_reached=True)
+    note = search_note(scan, limit=5)
+    assert note is not None
+    assert "entire history" in note
+
+
+def test_search_note_is_none_when_the_result_needs_no_caveat() -> None:
+    partial = SearchScan(matches=(make_message("m1"),), scanned=12, oldest_reached=True)
+    assert search_note(partial, limit=5) is None
+    complete = SearchScan(
+        matches=(make_message("m1"), make_message("m2")), scanned=12, oldest_reached=True
+    )
+    assert search_note(complete, limit=2) is None
+
+
+def test_build_search_page_reports_scan_accounting() -> None:
+    scan = SearchScan(
+        matches=(make_message("m3"), make_message("m1")),
+        scanned=7,
+        oldest_reached=True,
+        last_scanned_id="m1",
+    )
+    page = build_search_page(scan, 2, NOW, detailed=False)
+    assert [m.id for m in page.matches] == ["m3", "m1"]
+    assert page.count == 2
+    assert page.messages_scanned == 7
+    assert page.oldest_message_reached is True
+    assert page.next_before_id == "m1"
+    assert page.note is None
+    assert page.matches[0].sender_id is None  # concise
+
+
+def test_build_search_page_empty_scan_has_no_cursor() -> None:
+    page = build_search_page(SearchScan(oldest_reached=True), 5, NOW, detailed=True)
+    assert page.matches == ()
+    assert page.next_before_id is None
+    assert page.note is not None
+
+
+def test_build_search_page_detailed_includes_ids() -> None:
+    scan = SearchScan(matches=(make_message("m1"),), scanned=1, oldest_reached=True)
+    page = build_search_page(scan, 1, NOW, detailed=True)
+    assert page.matches[0].sender_id == "22"
+    assert page.matches[0].created_at is not None
+
+
+# --- highlights rendering ---------------------------------------------------
+
+
+def test_rank_by_likes_orders_by_likes_then_recency() -> None:
+    older_tie = make_liked_message("m1", likes=3, created_at=at(300))
+    newer_tie = make_liked_message("m2", likes=3, created_at=at(100))
+    top = make_liked_message("m3", likes=9, created_at=at(500))
+    ranked = rank_by_likes([older_tie, top, newer_tie])
+    assert [str(m.id) for m in ranked] == ["m3", "m2", "m1"]
+
+
+def test_member_highlights_aggregates_counts_and_likes() -> None:
+    ranked = rank_by_likes(
+        [
+            make_liked_message("m1", sender_id="1", sender_name="Ada", likes=5),
+            make_liked_message("m2", sender_id="2", sender_name="Grace", likes=4),
+            make_liked_message("m3", sender_id="1", sender_name="Ada", likes=2),
+        ]
+    )
+    members = member_highlights(ranked, detailed=False)
+    assert [(m.name, m.messages_in_top, m.likes_received) for m in members] == [
+        ("Ada", 2, 7),
+        ("Grace", 1, 4),
+    ]
+    assert members[0].user_id is None  # concise
+
+
+def test_member_highlights_breaks_ties_by_count_then_name() -> None:
+    ranked = [
+        make_liked_message("m1", sender_id="1", sender_name="Zed", likes=4),
+        make_liked_message("m2", sender_id="2", sender_name="Ada", likes=2),
+        make_liked_message("m3", sender_id="2", sender_name="Ada", likes=2),
+        make_liked_message("m4", sender_id="3", sender_name="Bob", likes=4),
+    ]
+    members = member_highlights(ranked, detailed=True)
+    # Ada ties Zed and Bob on likes (4) but has more messages; Bob beats Zed by name.
+    assert [m.name for m in members] == ["Ada", "Bob", "Zed"]
+    assert members[0].user_id == "2"
+
+
+def test_member_highlights_names_come_from_the_most_liked_message() -> None:
+    ranked = rank_by_likes(
+        [
+            make_liked_message("m1", sender_id="1", sender_name="Old Nick", likes=1),
+            make_liked_message("m2", sender_id="1", sender_name="New Nick", likes=8),
+        ]
+    )
+    members = member_highlights(ranked, detailed=False)
+    assert members[0].name == "New Nick"
+
+
+def test_member_highlights_respects_its_limit() -> None:
+    ranked = [
+        make_liked_message(f"m{i}", sender_id=str(i), sender_name=f"U{i}", likes=10 - i)
+        for i in range(TOP_MEMBERS_LIMIT + 3)
+    ]
+    assert len(member_highlights(ranked, detailed=False)) == TOP_MEMBERS_LIMIT
+
+
+def test_build_group_highlights_takes_the_top_messages_only() -> None:
+    messages = [
+        make_liked_message(f"m{i}", likes=i, text=f"msg {i}") for i in range(TOP_MESSAGES_LIMIT + 5)
+    ]
+    highlights = build_group_highlights(messages, "42", "week", NOW, detailed=False)
+    assert len(highlights.top_messages) == TOP_MESSAGES_LIMIT
+    assert highlights.top_messages[0].likes == TOP_MESSAGES_LIMIT + 4
+    assert highlights.group_id == "42"
+    assert highlights.period == "week"
+    assert highlights.note is None
+    assert highlights.top_messages[0].sender_id is None  # concise
+
+
+def test_build_group_highlights_previews_and_details() -> None:
+    long_text = "word " * 50
+    highlights = build_group_highlights(
+        [make_liked_message("m1", likes=2, text=long_text)], "42", "day", NOW, detailed=True
+    )
+    top = highlights.top_messages[0]
+    assert top.preview.endswith("…")
+    assert top.sent == "1m ago"
+    assert top.sender_id == "22"
+    assert top.created_at == at(60).isoformat()
+    assert highlights.top_members[0].user_id == "22"
+
+
+def test_build_group_highlights_empty_period_gets_a_note() -> None:
+    highlights = build_group_highlights([], "42", "month", NOW, detailed=False)
+    assert highlights.top_messages == ()
+    assert highlights.top_members == ()
+    assert highlights.note == EMPTY_HIGHLIGHTS_NOTE

@@ -27,6 +27,8 @@ async def react_to_message(
 ) -> ReactionResult:
     """Like a GroupMe message, or remove your like from one.
 
+    Use this to react to a specific message on the authenticated user's
+    behalf — acknowledging something without posting a reply.
     Both actions are idempotent: liking an already-liked message (or
     unliking one you never liked) leaves it in the requested state. Ids come
     from ``read_messages`` with ``response_format="detailed"``: use its

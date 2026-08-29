@@ -9,9 +9,10 @@ this repository. Humans: see [CONTRIBUTING.md](CONTRIBUTING.md).
 [GroupMe API v3](https://dev.groupme.com/docs/v3) over MCP. It is deployed to
 [Prefect Horizon](https://gofastmcp.com/deployment/prefect-horizon).
 
-**Current state: read and write tools implemented** (`list_conversations`,
-`read_messages`, `get_conversation_context`, `send_message`,
-`react_to_message`); image upload (arbitrary-URL images) is not yet.
+**Current state: read, agentic, and write tools implemented**
+(`list_conversations`, `read_messages`, `get_conversation_context`,
+`search_messages`, `get_highlights`, `send_message`, `react_to_message`);
+image upload (arbitrary-URL images) is not yet.
 
 ## Toolchain — use these, not the alternatives
 

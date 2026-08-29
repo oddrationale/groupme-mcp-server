@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import random
 import uuid
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import httpx2
 
@@ -39,15 +39,13 @@ if TYPE_CHECKING:
         DirectChat,
         Group,
         GroupId,
+        LeaderboardPeriod,
         Me,
         Message,
         MessageId,
         UserId,
     )
     from groupme_mcp_server.settings import Settings
-
-LeaderboardPeriod = Literal["day", "week", "month"]
-"""Time window accepted by the likes leaderboard endpoint."""
 
 
 def _parse[T](parser: Callable[[dict[str, Any]], T], raw: dict[str, Any], context: str) -> T:

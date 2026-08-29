@@ -13,8 +13,8 @@ An [MCP](https://modelcontextprotocol.io) server that exposes the
 [FastMCP](https://gofastmcp.com) and hosted on
 [Prefect Horizon](https://gofastmcp.com/deployment/prefect-horizon).
 
-> **Status: early.** Read tools and the core write tools (sending messages,
-> likes) are implemented; image upload is not yet.
+> **Status: early.** Read, search/highlights, and the core write tools
+> (sending messages, likes) are implemented; image upload is not yet.
 
 ## Tools
 
@@ -26,6 +26,8 @@ or `"detailed"` (full ids and metadata).
 | `list_conversations`       | Merge groups and DMs into one recency-sorted list with last-message previews. |
 | `read_messages`            | Read one group or DM conversation, oldest first, with a `next_before_id` cursor. |
 | `get_conversation_context` | One group's metadata, member list, and recent messages in a single call.      |
+| `search_messages`          | Search a conversation's history client-side (GroupMe has no search API), with honest scan accounting. |
+| `get_highlights`           | A group's top-liked messages for a day/week/month plus a member summary.      |
 | `send_message`             | Post to a group or DM, optionally as a reply or with a GroupMe-hosted image.  |
 | `react_to_message`         | Like or unlike one message (ids from `read_messages` detailed format).        |
 
