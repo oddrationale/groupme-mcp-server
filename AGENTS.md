@@ -39,6 +39,30 @@ uv run ruff format . && uv run ruff check . && uv run ty check && uv run pytest
 
 All four must pass. There is no partial credit.
 
+## Integration tests
+
+`tests/integration/` holds tests marked `integration` that talk to real
+services: read-only smoke tests against `api.groupme.com`, auth checks
+against the deployed server at `https://groupme.fastmcp.app/mcp`, and a
+stdio end-to-end test that spawns `uv run groupme-mcp-server` as a
+subprocess. They are **deselected by default** (`-m "not integration"` in
+`addopts`), so the ordinary gate, CI, and the 100% coverage requirement
+never touch them. Run them with:
+
+```bash
+uv run pytest -m integration --no-cov
+```
+
+- The live GroupMe tests need `GROUPME_ACCESS_TOKEN` (in `.env`); they skip
+  themselves when it is absent, and they are strictly read-only — never add
+  a test that sends, likes, or otherwise mutates the account.
+- The stdio and deployed-server tests need no credentials, only network
+  access; the authenticated deployed-server check additionally requires an
+  interactive browser OAuth login and only runs with
+  `HORIZON_OAUTH_INTERACTIVE=1`.
+- `--no-cov` matters: integration runs exercise a subset of the code and
+  would otherwise fail the 100% coverage gate.
+
 ## Non-negotiables
 
 1. **100% coverage, branch coverage included.** New code needs new tests. Do not
@@ -64,6 +88,7 @@ src/groupme_mcp_server/
   server.py        # the FastMCP instance -- Horizon's entrypoint
   settings.py      # pydantic-settings configuration
 tests/             # top-level, mirrors src/ module names
+tests/integration/ # opt-in live/e2e suites (see "Integration tests" above)
 scripts/           # standalone git-hook helper scripts
 ```
 

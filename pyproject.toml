@@ -197,7 +197,16 @@ addopts = [
     "--import-mode=importlib",
     "--strict-config",
     "--strict-markers",
+    # Integration tests (tests/integration/) talk to real services, so the
+    # default run — and therefore CI and the 100% coverage gate — deselects
+    # them. Run them explicitly with: uv run pytest -m integration --no-cov
+    # (a -m given on the command line comes after addopts and overrides this).
+    "-m",
+    "not integration",
     "-ra",
+]
+markers = [
+    "integration: talks to real external services (GroupMe API, the deployed server) or spawns subprocesses; excluded from the default run and the coverage gate",
 ]
 asyncio_mode = "auto"
 xfail_strict = true
