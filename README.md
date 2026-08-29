@@ -1,0 +1,96 @@
+# groupme-mcp-server
+
+[![CI](https://github.com/oddrationale/groupme-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/oddrationale/groupme-mcp-server/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/oddrationale/groupme-mcp-server/branch/main/graph/badge.svg)](https://codecov.io/gh/oddrationale/groupme-mcp-server)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/oddrationale/groupme-mcp-server/badge)](https://scorecard.dev/viewer/?uri=github.com/oddrationale/groupme-mcp-server)
+[![PyPI](https://img.shields.io/pypi/v/groupme-mcp-server.svg)](https://pypi.org/project/groupme-mcp-server/)
+[![Python](https://img.shields.io/pypi/pyversions/groupme-mcp-server.svg)](https://pypi.org/project/groupme-mcp-server/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
+An [MCP](https://modelcontextprotocol.io) server that exposes the
+[GroupMe API v3](https://dev.groupme.com/docs/v3) to MCP clients, built with
+[FastMCP](https://gofastmcp.com) and hosted on
+[Prefect Horizon](https://gofastmcp.com/deployment/prefect-horizon).
+
+> **Status: scaffolding.** The project structure, tooling, and CI/CD are in
+> place. No GroupMe tools are implemented yet.
+
+## Quick start
+
+```bash
+uvx groupme-mcp-server
+```
+
+Or point an MCP client at it directly:
+
+```json
+{
+  "mcpServers": {
+    "groupme": {
+      "command": "uvx",
+      "args": ["groupme-mcp-server"],
+      "env": {
+        "GROUPME_MCP_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}
+```
+
+## Configuration
+
+All settings are read from the environment with the `GROUPME_MCP_` prefix, or
+from a local `.env` file. See [`.env.example`](.env.example).
+
+| Variable                 | Default | Description                                                     |
+| ------------------------ | ------- | --------------------------------------------------------------- |
+| `GROUPME_MCP_LOG_LEVEL`  | `INFO`  | `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`.              |
+
+## Development
+
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.13+.
+
+```bash
+git clone https://github.com/oddrationale/groupme-mcp-server.git
+cd groupme-mcp-server
+uv sync --all-groups
+uv run lefthook install     # install the git hooks
+```
+
+Common tasks:
+
+| Command                          | What it does                                        |
+| -------------------------------- | --------------------------------------------------- |
+| `uv run ruff format .`           | Format.                                             |
+| `uv run ruff check --fix .`      | Lint and autofix.                                   |
+| `uv run ty check`                | Type check.                                         |
+| `uv run pytest`                  | Run tests. **Fails below 100% coverage.**           |
+| `uv run pytest --no-cov -k name` | Run a subset without the coverage gate.             |
+| `uv run fastmcp inspect src/groupme_mcp_server/server.py:mcp` | See what Horizon sees. |
+
+Coverage is enforced at **100%** (branch coverage included). If a line is
+genuinely untestable, exclude it deliberately with `# pragma: no cover` and say
+why in the PR — do not lower the threshold.
+
+## Deployment
+
+The server is deployed to [Prefect Horizon](https://horizon.prefect.io), which
+builds directly from this repository via its GitHub App:
+
+- **Entrypoint:** `src/groupme_mcp_server/server.py:mcp`
+- **Dependencies:** detected automatically from `pyproject.toml`
+- **Environment variables:** configured in the Horizon UI
+
+Every push to `main` triggers a fresh build; branches get preview deployments.
+There is no deploy step in GitHub Actions — CI only gates quality and security.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues go through
+[private vulnerability reporting](https://github.com/oddrationale/groupme-mcp-server/security/advisories/new),
+not public issues — see [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE) © Dariel Dato-on

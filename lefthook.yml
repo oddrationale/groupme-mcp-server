@@ -1,0 +1,40 @@
+# https://lefthook.dev  |  install with: uv run lefthook install
+min_version: 2.1.0
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: ruff-format
+      glob: "*.py"
+      run: uv run ruff format {staged_files}
+      stage_fixed: true
+
+    - name: ruff-lint
+      glob: "*.py"
+      run: uv run ruff check --fix --force-exclude {staged_files}
+      stage_fixed: true
+
+    - name: ty
+      glob: "*.py"
+      run: uv run ty check
+
+    - name: uv-lock-is-current
+      glob: "pyproject.toml"
+      run: uv lock --check
+
+    - name: no-large-files
+      run: uv run python scripts/check_large_files.py {staged_files}
+
+commit-msg:
+  jobs:
+    - name: conventional-commit
+      run: uv run python scripts/check_commit_msg.py {1}
+
+pre-push:
+  jobs:
+    - name: pytest
+      run: uv run pytest
+
+    - name: zizmor
+      glob: ".github/workflows/*"
+      run: uvx zizmor --persona=pedantic .

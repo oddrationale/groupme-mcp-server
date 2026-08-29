@@ -1,0 +1,4 @@
+# Untracked files copied into new git worktrees (Claude Code /worktree).
+# Keeps a fresh worktree immediately runnable without re-doing local setup.
+.env
+.claude/settings.local.json

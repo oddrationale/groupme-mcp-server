@@ -1,0 +1,213 @@
+[project]
+name = "groupme-mcp-server"
+version = "0.1.0"
+description = "A FastMCP server that exposes the GroupMe API v3 to MCP clients."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Dariel Dato-on", email = "80038+oddrationale@users.noreply.github.com" },
+]
+maintainers = [
+    { name = "Dariel Dato-on", email = "80038+oddrationale@users.noreply.github.com" },
+]
+requires-python = ">=3.13"
+keywords = [
+    "fastmcp",
+    "groupme",
+    "llm",
+    "mcp",
+    "model-context-protocol",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Chat",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "fastmcp>=3.4.7,<4",
+    "pydantic-settings>=2.15,<3",
+]
+
+[project.urls]
+Homepage = "https://github.com/oddrationale/groupme-mcp-server"
+Repository = "https://github.com/oddrationale/groupme-mcp-server"
+Issues = "https://github.com/oddrationale/groupme-mcp-server/issues"
+Changelog = "https://github.com/oddrationale/groupme-mcp-server/blob/main/CHANGELOG.md"
+
+[project.scripts]
+groupme-mcp-server = "groupme_mcp_server.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.12.7,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "lefthook>=2.1.12",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4",
+    "pytest-cov>=7.1",
+    "ruff>=0.16.5",
+    "ty>=0.0.75",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff - linting and formatting
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+extend-exclude = [".venv"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "A",     # flake8-builtins
+    "ANN",   # flake8-annotations
+    "ARG",   # flake8-unused-arguments
+    "ASYNC", # flake8-async
+    "B",     # flake8-bugbear
+    "BLE",   # flake8-blind-except
+    "C4",    # flake8-comprehensions
+    "C90",   # mccabe
+    "D",     # pydocstyle
+    "DTZ",   # flake8-datetimez
+    "E",     # pycodestyle errors
+    "EM",    # flake8-errmsg
+    "ERA",   # eradicate
+    "F",     # pyflakes
+    "FA",    # flake8-future-annotations
+    "FBT",   # flake8-boolean-trap
+    "FURB",  # refurb
+    "G",     # flake8-logging-format
+    "I",     # isort
+    "ICN",   # flake8-import-conventions
+    "INP",   # flake8-no-pep420
+    "ISC",   # flake8-implicit-str-concat
+    "LOG",   # flake8-logging
+    "N",     # pep8-naming
+    "PERF",  # perflint
+    "PGH",   # pygrep-hooks
+    "PIE",   # flake8-pie
+    "PL",    # pylint
+    "PT",    # flake8-pytest-style
+    "PTH",   # flake8-use-pathlib
+    "PYI",   # flake8-pyi
+    "RET",   # flake8-return
+    "RSE",   # flake8-raise
+    "RUF",   # ruff-specific rules
+    "S",     # flake8-bandit
+    "SIM",   # flake8-simplify
+    "SLF",   # flake8-self
+    "SLOT",  # flake8-slots
+    "T10",   # flake8-debugger
+    "T20",   # flake8-print
+    "TC",    # flake8-type-checking
+    "TID",   # flake8-tidy-imports
+    "TRY",   # tryceratops
+    "UP",    # pyupgrade
+    "W",     # pycodestyle warnings
+    "YTT",   # flake8-2020
+]
+ignore = [
+    "D203",   # incompatible with D211 (no blank line before class docstring)
+    "D213",   # incompatible with D212 (summary on first line)
+    "ISC001", # conflicts with the formatter
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["INP001"] # standalone hook scripts, not a package
+"tests/**/*.py" = [
+    "D100",    # tests do not need module docstrings
+    "D103",    # tests do not need function docstrings
+    "D104",    # tests do not need package docstrings
+    "INP001",  # tests are intentionally not a package
+    "PLR2004", # magic values are fine in assertions
+    "S101",    # assert is the point of a test
+    "SLF001",  # tests may poke at private members
+    "TC",      # fixture/param types read better as plain imports in tests
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-type-checking]
+strict = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["groupme_mcp_server"]
+required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pylint]
+max-args = 6
+
+# ---------------------------------------------------------------------------
+# ty - type checking
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.src]
+include = ["scripts", "src", "tests"]
+
+[tool.ty.terminal]
+error-on-warning = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "--cov",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=xml",
+    "--import-mode=importlib",
+    "--strict-config",
+    "--strict-markers",
+    "-ra",
+]
+asyncio_mode = "auto"
+xfail_strict = true
+filterwarnings = ["error"]
+log_cli_level = "INFO"
+
+# ---------------------------------------------------------------------------
+# coverage - 100% or bust
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source_pkgs = ["groupme_mcp_server"]
+branch = true
+relative_files = true
+
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    '@(abc\.)?abstractmethod',
+]
