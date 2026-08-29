@@ -75,15 +75,19 @@ why in the PR — do not lower the threshold.
 
 ## Deployment
 
-The server is deployed to [Prefect Horizon](https://horizon.prefect.io), which
-builds directly from this repository via its GitHub App:
+The server is live at **https://groupme.fastmcp.app/mcp**, deployed on
+[Prefect Horizon](https://horizon.prefect.io), which builds directly from this
+repository via its GitHub App.
 
 - **Entrypoint:** `src/groupme_mcp_server/server.py:mcp`
-- **Dependencies:** detected automatically from `pyproject.toml`
-- **Environment variables:** configured in the Horizon UI
+- **Dependencies:** installed with `uv sync --frozen --no-dev`, so `uv.lock`
+  must be committed and current or the build fails
+- **Environment variables:** registered in the Horizon UI
+- **Auth:** Horizon's built-in OAuth — clients must present a bearer token
 
-Every push to `main` triggers a fresh build; branches get preview deployments.
-There is no deploy step in GitHub Actions — CI only gates quality and security.
+The `production` target tracks `main` and deploys only after CI passes; every
+pull request gets its own preview deployment. There is no deploy step in GitHub
+Actions — CI gates quality and security, Horizon does the shipping.
 
 ## Contributing
 

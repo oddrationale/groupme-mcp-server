@@ -85,9 +85,13 @@ docs: clarify Horizon entrypoint
 
 ### One constraint worth knowing
 
-`src/groupme_mcp_server/server.py` is the Prefect Horizon entrypoint. Horizon
-loads that file directly. Keep it importable on its own and be deliberate about
-what it pulls in at module scope.
+`src/groupme_mcp_server/server.py` is the Prefect Horizon entrypoint, and
+Horizon builds with `uv sync --frozen --no-dev`. Two consequences:
+
+- Commit the refreshed `uv.lock` whenever you touch dependencies — `--frozen`
+  fails the deploy on a stale lockfile.
+- Runtime dependencies belong in `[project.dependencies]`; the `dev` group is
+  not installed in production.
 
 ## Tests
 
