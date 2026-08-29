@@ -13,8 +13,19 @@ An [MCP](https://modelcontextprotocol.io) server that exposes the
 [FastMCP](https://gofastmcp.com) and hosted on
 [Prefect Horizon](https://gofastmcp.com/deployment/prefect-horizon).
 
-> **Status: scaffolding.** The project structure, tooling, and CI/CD are in
-> place. No GroupMe tools are implemented yet.
+> **Status: early.** Read-only tools are implemented; write tools (sending
+> messages, likes) are not yet.
+
+## Tools
+
+All tools accept `response_format`: `"concise"` (default, human-readable) or
+`"detailed"` (full ids and metadata).
+
+| Tool                       | What it does                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| `list_conversations`       | Merge groups and DMs into one recency-sorted list with last-message previews. |
+| `read_messages`            | Read one group or DM conversation, oldest first, with a `next_before_id` cursor. |
+| `get_conversation_context` | One group's metadata, member list, and recent messages in a single call.      |
 
 ## Quick start
 

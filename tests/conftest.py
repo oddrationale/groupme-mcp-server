@@ -35,7 +35,18 @@ def _import_package_without_local_env() -> None:
 
 _import_package_without_local_env()
 
-from groupme_mcp_server.settings import get_settings  # noqa: E402
+import httpx2  # noqa: E402
+from pydantic import SecretStr  # noqa: E402
+
+from groupme_mcp_server.client import GroupMeClient  # noqa: E402
+from groupme_mcp_server.settings import Settings, get_settings  # noqa: E402
+from groupme_mcp_server.tools import common  # noqa: E402
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    Handler = Callable[[httpx2.Request], httpx2.Response]
+    TransportInstaller = Callable[..., list[httpx2.Request]]
 
 
 @pytest.fixture(autouse=True)
@@ -44,6 +55,43 @@ def _clear_settings_cache() -> Iterator[None]:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def groupme_transport(monkeypatch: pytest.MonkeyPatch) -> TransportInstaller:
+    """Route tool HTTP calls through a mock transport.
+
+    Returns an installer: call it with a ``httpx2`` handler (and optionally a
+    ``token`` / ``max_retries`` override) and it replaces the tool layer's
+    client factory, returning the list that records every outgoing request.
+    """
+
+    def install(
+        handler: Handler,
+        *,
+        token: str | None = "test-token",  # noqa: S107 - a made-up test value
+        max_retries: int = 0,
+    ) -> list[httpx2.Request]:
+        requests: list[httpx2.Request] = []
+
+        def recording(request: httpx2.Request) -> httpx2.Response:
+            requests.append(request)
+            return handler(request)
+
+        def factory() -> GroupMeClient:
+            return GroupMeClient(
+                Settings(
+                    access_token=SecretStr(token) if token is not None else None,
+                    api_base_url="https://api.groupme.test/v3",
+                ),
+                transport=httpx2.MockTransport(recording),
+                max_retries=max_retries,
+            )
+
+        monkeypatch.setattr(common, "create_client", factory)
+        return requests
+
+    return install
 
 
 @pytest.fixture(autouse=True)

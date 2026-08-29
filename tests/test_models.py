@@ -13,17 +13,23 @@ from groupme_mcp_server.errors import (
 )
 from groupme_mcp_server.models import (
     Conversation,
+    ConversationRef,
     DirectChat,
+    DirectRef,
     Group,
+    GroupRef,
     ImageAttachment,
     LocationAttachment,
     Me,
+    Member,
     MentionsAttachment,
+    MessagePreview,
     ReplyAttachment,
     UnknownAttachment,
     backoff_delay,
     ensure_single_cursor,
     meta_errors,
+    optional_epoch,
     parse_attachment,
     parse_direct_chat,
     parse_group,
@@ -163,23 +169,83 @@ def test_parse_group_with_members() -> None:
             "name": "Book club",
             "description": "We read",
             "image_url": "https://i.groupme.com/g.jpg",
-            "members": [{"user_id": "1"}, {"user_id": "2"}],
+            "members": [
+                {"user_id": "1", "nickname": "Ada", "roles": ["admin", "owner"]},
+                {"user_id": "2"},
+            ],
         }
     )
-    assert group == Group(
-        id="42",
-        name="Book club",
-        description="We read",
-        image_url="https://i.groupme.com/g.jpg",
-        member_count=2,
+    assert group.member_count == 2
+    assert group.members == (
+        Member(user_id="1", nickname="Ada", roles=("admin", "owner")),
+        Member(user_id="2", nickname="", roles=()),
     )
+    assert group.description == "We read"
+    assert group.image_url == "https://i.groupme.com/g.jpg"
 
 
 def test_parse_group_without_members() -> None:
     group = parse_group({"id": "42", "name": "Book club"})
     assert group.member_count is None
+    assert group.members is None
     assert group.description is None
     assert group.image_url is None
+    assert group.creator_user_id is None
+    assert group.share_url is None
+    assert group.updated_at is None
+    assert group.preview is None
+
+
+def test_parse_group_member_with_non_list_roles() -> None:
+    group = parse_group({"id": "42", "name": "g", "members": [{"user_id": "1", "roles": "admin"}]})
+    assert group.members == (Member(user_id="1", nickname="", roles=()),)
+
+
+def test_parse_group_detailed_metadata_and_preview() -> None:
+    group = parse_group(
+        {
+            "id": "42",
+            "name": "Book club",
+            "creator_user_id": "9",
+            "share_url": "https://groupme.com/join_group/42/SHARE",
+            "updated_at": 1700000000,
+            "messages": {
+                "last_message_created_at": 1700000000,
+                "preview": {"nickname": "Ada", "text": "hi"},
+            },
+        }
+    )
+    assert group.creator_user_id == "9"
+    assert group.share_url == "https://groupme.com/join_group/42/SHARE"
+    assert group.updated_at == datetime.fromtimestamp(1700000000, tz=UTC)
+    assert group.preview == MessagePreview(
+        sender_name="Ada", text="hi", created_at=datetime.fromtimestamp(1700000000, tz=UTC)
+    )
+
+
+def test_parse_group_preview_without_preview_dict() -> None:
+    group = parse_group(
+        {"id": "42", "name": "g", "messages": {"last_message_created_at": 1700000000}}
+    )
+    assert group.preview == MessagePreview(created_at=datetime.fromtimestamp(1700000000, tz=UTC))
+
+
+def test_parse_group_empty_messages_block_means_no_preview() -> None:
+    group = parse_group({"id": "42", "name": "g", "messages": {"preview": {}}})
+    assert group.preview is None
+
+
+@pytest.mark.parametrize("value", [None, True, "1700000000", [1]])
+def test_optional_epoch_rejects_non_numbers(value: object) -> None:
+    assert optional_epoch(value) is None
+
+
+@pytest.mark.parametrize("value", [1700000000, 1700000000.5])
+def test_optional_epoch_accepts_numbers(value: float) -> None:
+    parsed = optional_epoch(value)
+    assert parsed is not None
+    assert parsed == datetime.fromtimestamp(value, tz=UTC)
+    assert parsed.tzinfo is not None
 
 
 def test_parse_me() -> None:
@@ -203,6 +269,30 @@ def test_parse_direct_chat() -> None:
     chat = parse_direct_chat({"other_user": {"id": "7", "name": "Grace"}})
     assert chat == DirectChat(other_user_id="7", other_user_name="Grace")
     assert chat.conversation_id is None
+    assert chat.updated_at is None
+    assert chat.preview is None
+
+
+def test_parse_direct_chat_with_preview_and_updated_at() -> None:
+    chat = parse_direct_chat(
+        {
+            "other_user": {"id": "7", "name": "Grace"},
+            "updated_at": 1700000000,
+            "last_message": {"name": "Grace", "text": "hey", "created_at": 1700000000},
+        }
+    )
+    assert chat.updated_at == datetime.fromtimestamp(1700000000, tz=UTC)
+    assert chat.preview == MessagePreview(
+        sender_name="Grace", text="hey", created_at=datetime.fromtimestamp(1700000000, tz=UTC)
+    )
+
+
+def test_parse_direct_chat_empty_last_message_means_no_preview() -> None:
+    chat = parse_direct_chat(
+        {"other_user": {"id": "7", "name": "Grace"}, "last_message": {"conversation_id": "1+7"}}
+    )
+    assert chat.preview is None
+    assert chat.conversation_id == "1+7"
 
 
 def test_parse_direct_chat_recovers_conversation_id() -> None:
@@ -220,6 +310,33 @@ def test_parse_direct_chat_last_message_without_conversation_id() -> None:
         {"other_user": {"id": "7", "name": "Grace"}, "last_message": {"id": "m1"}}
     )
     assert chat.conversation_id is None
+
+
+def test_conversation_ref_discriminates_on_kind() -> None:
+    adapter: TypeAdapter[GroupRef | DirectRef] = TypeAdapter(ConversationRef)
+    group_ref = adapter.validate_python({"kind": "group", "group_id": "42"})
+    assert group_ref == GroupRef(group_id="42")
+    direct_ref = adapter.validate_python({"kind": "direct", "other_user_id": "7"})
+    assert direct_ref == DirectRef(other_user_id="7")
+
+
+def test_conversation_ref_requires_the_kind_tag() -> None:
+    adapter: TypeAdapter[GroupRef | DirectRef] = TypeAdapter(ConversationRef)
+    with pytest.raises(ValidationError):
+        adapter.validate_python({"group_id": "42", "other_user_id": "7"})
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"kind": "group", "group_id": "42", "other_user_id": "7"},
+        {"kind": "direct", "other_user_id": "7", "group_id": "42"},
+    ],
+)
+def test_conversation_ref_forbids_mixed_ids(payload: dict[str, str]) -> None:
+    adapter: TypeAdapter[GroupRef | DirectRef] = TypeAdapter(ConversationRef)
+    with pytest.raises(ValidationError):
+        adapter.validate_python(payload)
 
 
 def test_conversation_discriminates_on_kind() -> None:

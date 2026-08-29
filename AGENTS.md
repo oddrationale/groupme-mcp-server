@@ -9,7 +9,8 @@ this repository. Humans: see [CONTRIBUTING.md](CONTRIBUTING.md).
 [GroupMe API v3](https://dev.groupme.com/docs/v3) over MCP. It is deployed to
 [Prefect Horizon](https://gofastmcp.com/deployment/prefect-horizon).
 
-**Current state: scaffolding only.** No GroupMe tools are implemented.
+**Current state: read tools implemented** (`list_conversations`,
+`read_messages`, `get_conversation_context`); write tools are not yet.
 
 ## Toolchain — use these, not the alternatives
 
@@ -100,13 +101,18 @@ currently none, because `Settings` has a default for every field.
 
 ## Adding a GroupMe tool
 
+Tool modules in `src/groupme_mcp_server/tools/` define **plain async
+functions** — do not decorate them with `@mcp.tool` at import time.
+(`fastmcp inspect server.py:mcp` loads `server.py` as a standalone module, so
+import-time registration against `groupme_mcp_server.server.mcp` would attach
+tools to a *different* instance than the one being inspected.) Instead,
+`tools/__init__.py` exposes `register_all(mcp)`, which `server.py` calls right
+after creating the instance — add new tools to the tuple in `register_all`.
+
 ```python
 from __future__ import annotations
 
-from groupme_mcp_server.server import mcp
 
-
-@mcp.tool
 async def list_groups(limit: int = 10) -> list[dict[str, str]]:
     """List the authenticated user's GroupMe groups.
 
