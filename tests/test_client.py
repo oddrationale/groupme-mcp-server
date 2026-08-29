@@ -118,7 +118,7 @@ async def test_list_groups_params_and_models() -> None:
     transport = recording_transport([httpx2.Response(200, json=envelope([RAW_GROUP]))], requests)
     client, _ = make_client(transport)
     groups = await client.list_groups(page=2, per_page=5, omit_memberships=True)
-    assert groups == [Group(id=GroupId("42"), name="Book club", member_count=0)]
+    assert groups == [Group(id=GroupId("42"), name="Book club", member_count=0, members=())]
     params = dict(requests[0].url.params)
     assert params == {"page": "2", "per_page": "5", "omit": "memberships"}
 

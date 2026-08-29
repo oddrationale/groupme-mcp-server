@@ -126,6 +126,22 @@ class Message(GroupMeModel):
     attachments: tuple[Attachment, ...] = ()
 
 
+class Member(GroupMeModel):
+    """One membership entry of a GroupMe group."""
+
+    user_id: UserId
+    nickname: str
+    roles: tuple[str, ...] = ()
+
+
+class MessagePreview(GroupMeModel):
+    """Lightweight preview of a conversation's most recent message."""
+
+    sender_name: str | None = None
+    text: str | None = None
+    created_at: datetime | None = None
+
+
 class Group(GroupMeModel):
     """A GroupMe group conversation."""
 
@@ -135,6 +151,11 @@ class Group(GroupMeModel):
     description: str | None = None
     image_url: str | None = None
     member_count: int | None = None
+    members: tuple[Member, ...] | None = None
+    creator_user_id: UserId | None = None
+    share_url: str | None = None
+    updated_at: datetime | None = None
+    preview: MessagePreview | None = None
 
 
 class DirectChat(GroupMeModel):
@@ -144,10 +165,44 @@ class DirectChat(GroupMeModel):
     conversation_id: ConversationId | None = None
     other_user_id: UserId
     other_user_name: str
+    updated_at: datetime | None = None
+    preview: MessagePreview | None = None
 
 
 Conversation = Annotated[Group | DirectChat, Field(discriminator="kind")]
 """Either kind of conversation, discriminated by the ``kind`` tag."""
+
+
+class GroupRef(GroupMeModel):
+    """Reference to a group conversation, for tool inputs.
+
+    Extra fields are forbidden so a call mixing group and direct-chat ids
+    fails validation instead of silently dropping one of them.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["group"] = "group"
+    group_id: GroupId = Field(description="The group's id, e.g. from list_conversations.")
+
+
+class DirectRef(GroupMeModel):
+    """Reference to a direct-message conversation, for tool inputs.
+
+    Extra fields are forbidden so a call mixing group and direct-chat ids
+    fails validation instead of silently dropping one of them.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["direct"] = "direct"
+    other_user_id: UserId = Field(
+        description="The other participant's user id, e.g. from list_conversations."
+    )
+
+
+ConversationRef = Annotated[GroupRef | DirectRef, Field(discriminator="kind")]
+"""A conversation reference: exactly one of a group id or a DM partner id."""
 
 _KNOWN_ATTACHMENTS: dict[str, type[Attachment]] = {
     "image": ImageAttachment,
@@ -231,6 +286,57 @@ def ensure_single_cursor(*cursors: object) -> None:
         raise ValueError(msg)
 
 
+def optional_epoch(value: object) -> datetime | None:
+    """Convert an optional Unix timestamp to an aware UTC datetime.
+
+    Args:
+        value: A candidate timestamp from a raw payload.
+
+    Returns:
+        The datetime for an int or float value, otherwise ``None``
+        (booleans, strings, and missing values all normalize to ``None``).
+    """
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return datetime.fromtimestamp(value, tz=UTC)
+
+
+def _optional_str(value: object) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _preview_from(sender_name: object, text: object, created_at: object) -> MessagePreview | None:
+    preview = MessagePreview(
+        sender_name=_optional_str(sender_name),
+        text=_optional_str(text),
+        created_at=optional_epoch(created_at),
+    )
+    return None if preview == MessagePreview() else preview
+
+
+def _group_preview(raw: dict[str, Any]) -> MessagePreview | None:
+    messages = raw.get("messages")
+    if not isinstance(messages, dict):
+        return None
+    preview = messages.get("preview")
+    if not isinstance(preview, dict):
+        preview = {}
+    return _preview_from(
+        preview.get("nickname"),
+        preview.get("text"),
+        messages.get("last_message_created_at"),
+    )
+
+
+def _parse_member(raw: dict[str, Any]) -> Member:
+    roles = raw.get("roles")
+    return Member(
+        user_id=UserId(str(raw["user_id"])),
+        nickname=str(raw.get("nickname", "")),
+        roles=tuple(str(role) for role in roles) if isinstance(roles, list) else (),
+    )
+
+
 def parse_group(raw: dict[str, Any]) -> Group:
     """Normalize a raw GroupMe group dict into a ``Group``.
 
@@ -238,16 +344,27 @@ def parse_group(raw: dict[str, Any]) -> Group:
         raw: The group object as returned by GroupMe.
 
     Returns:
-        The normalized group. ``member_count`` is ``None`` when memberships
-        were omitted from the listing.
+        The normalized group. ``members`` and ``member_count`` are ``None``
+        when memberships were omitted from the listing.
     """
-    members = raw.get("members")
+    raw_members = raw.get("members")
+    members = (
+        tuple(_parse_member(member) for member in raw_members)
+        if isinstance(raw_members, list)
+        else None
+    )
+    creator = raw.get("creator_user_id")
     return Group(
         id=GroupId(str(raw["id"])),
         name=str(raw["name"]),
         description=raw.get("description"),
         image_url=raw.get("image_url"),
-        member_count=len(members) if isinstance(members, list) else None,
+        member_count=len(members) if members is not None else None,
+        members=members,
+        creator_user_id=UserId(str(creator)) if creator is not None else None,
+        share_url=raw.get("share_url"),
+        updated_at=optional_epoch(raw.get("updated_at")),
+        preview=_group_preview(raw),
     )
 
 
@@ -263,10 +380,22 @@ def parse_direct_chat(raw: dict[str, Any]) -> DirectChat:
         present.
     """
     other = raw["other_user"]
+    last_message = raw.get("last_message")
+    preview = (
+        _preview_from(
+            last_message.get("name"),
+            last_message.get("text"),
+            last_message.get("created_at"),
+        )
+        if isinstance(last_message, dict)
+        else None
+    )
     return DirectChat(
         conversation_id=_chat_conversation_id(raw),
         other_user_id=UserId(str(other["id"])),
         other_user_name=str(other["name"]),
+        updated_at=optional_epoch(raw.get("updated_at")),
+        preview=preview,
     )
 
 
