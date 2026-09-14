@@ -32,7 +32,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "fastmcp>=3.4.7,<4",
+    "fastmcp>=3.4.7,<5",
     "httpx2>=2.12,<3",
     "opentelemetry-exporter-otlp-proto-http>=1.44",
     "opentelemetry-instrumentation-httpx>=0.65b0",
