@@ -8,6 +8,7 @@ accounting decision lives in the pure [`groupme_mcp_server.search`][] module.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -31,6 +32,8 @@ from groupme_mcp_server.search import (
     validate_search_filters,
 )
 from groupme_mcp_server.tools import common
+
+logger = logging.getLogger(__name__)
 
 MAX_SCAN_CAP = 5000
 """Largest slice of history one search call may scan."""
@@ -91,11 +94,11 @@ async def search_messages(  # noqa: PLR0913, PLR0917 - the search contract needs
     scan = SearchScan()
     async with common.tool_client(_EXAMPLE) as client:
         validate_search_filters(filters)
-        if ctx is not None:
-            await ctx.info(
-                f"Searching backwards through up to {max_messages_scanned} message(s) "
-                f"for up to {limit} match(es)."
-            )
+        logger.info(
+            "Searching backwards through up to %d message(s) for up to %d match(es).",
+            max_messages_scanned,
+            limit,
+        )
         while not scan_complete(scan, limit=limit, max_messages_scanned=max_messages_scanned):
             if isinstance(conversation, GroupRef):
                 requested = next_page_size(
@@ -122,10 +125,15 @@ async def search_messages(  # noqa: PLR0913, PLR0917 - the search contract needs
             if ctx is not None:
                 # apply_search_page never examines past the cap, so scanned
                 # is always a valid progress value.
-                await ctx.report_progress(scan.scanned, max_messages_scanned)
-        if ctx is not None:
-            await ctx.info(
-                f"Search finished: {len(scan.matches)} match(es) in "
-                f"{scan.scanned} scanned message(s)."
-            )
+                await ctx.report_progress(
+                    scan.scanned,
+                    max_messages_scanned,
+                    f"Scanned {scan.scanned} of up to {max_messages_scanned} message(s); "
+                    f"{len(scan.matches)} match(es) so far.",
+                )
+        logger.info(
+            "Search finished: %d match(es) in %d scanned message(s).",
+            len(scan.matches),
+            scan.scanned,
+        )
     return build_search_page(scan, limit, now, detailed=detailed)
