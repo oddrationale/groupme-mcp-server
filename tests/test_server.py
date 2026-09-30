@@ -40,11 +40,11 @@ async def test_all_tools_carry_honest_annotations() -> None:
             annotations = tool.annotations
             assert annotations is not None, tool.name
             # Every tool talks to the external GroupMe API; none destroys data.
-            assert annotations.openWorldHint is True
-            assert annotations.destructiveHint is False
-            assert annotations.readOnlyHint is (tool.name in READ_TOOLS)
+            assert annotations.open_world_hint is True
+            assert annotations.destructive_hint is False
+            assert annotations.read_only_hint is (tool.name in READ_TOOLS)
             # Sending is the only non-idempotent tool: repeats post duplicates.
-            assert annotations.idempotentHint is (tool.name != "send_message")
+            assert annotations.idempotent_hint is (tool.name != "send_message")
             assert tool.description is not None
             # Consistency polish: every tool description states when to use it.
             assert "Use this" in tool.description

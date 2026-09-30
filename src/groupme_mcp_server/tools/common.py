@@ -25,28 +25,28 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
 READ_ONLY_ANNOTATIONS: dict[str, bool] = {
-    "readOnlyHint": True,
-    "destructiveHint": False,
-    "idempotentHint": True,
-    "openWorldHint": True,
+    "read_only_hint": True,
+    "destructive_hint": False,
+    "idempotent_hint": True,
+    "open_world_hint": True,
 }
 """Honest annotations shared by every read-only tool: they never write, and
 they talk to the external GroupMe service."""
 
 SEND_MESSAGE_ANNOTATIONS: dict[str, bool] = {
-    "readOnlyHint": False,
-    "destructiveHint": False,
-    "idempotentHint": False,
-    "openWorldHint": True,
+    "read_only_hint": False,
+    "destructive_hint": False,
+    "idempotent_hint": False,
+    "open_world_hint": True,
 }
 """Honest annotations for ``send_message``: it writes (but destroys nothing),
 repeating it sends duplicate messages, and it talks to GroupMe."""
 
 REACTION_ANNOTATIONS: dict[str, bool] = {
-    "readOnlyHint": False,
-    "destructiveHint": False,
-    "idempotentHint": True,
-    "openWorldHint": True,
+    "read_only_hint": False,
+    "destructive_hint": False,
+    "idempotent_hint": True,
+    "open_world_hint": True,
 }
 """Honest annotations for ``react_to_message``: liking or unliking twice lands
 in the same state, and an unlike only removes this user's own like."""

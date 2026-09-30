@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -272,8 +273,9 @@ async def test_filterless_search_is_an_actionable_error_before_any_request(
     assert requests == []
 
 
-async def test_progress_and_info_are_reported_during_the_scan(
+async def test_progress_and_status_are_reported_during_the_scan(
     groupme_transport: TransportInstaller,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     # Page sizes track the cap: a full 100-message page, then the 50 remaining.
     first_page = [raw_message(f"a{i}", NOW - 10 * i) for i in range(1, 101)]
@@ -283,16 +285,13 @@ async def test_progress_and_info_are_reported_during_the_scan(
         "a100": second_page,
     }
     requests = groupme_transport(group_history_handler(pages))
-    progress: list[tuple[float, float | None]] = []
-    logs: list[str] = []
+    progress: list[tuple[float, float | None, str | None]] = []
 
-    async def on_progress(value: float, total: float | None, message: str | None) -> None:  # noqa: ARG001
-        progress.append((value, total))
+    async def on_progress(value: float, total: float | None, message: str | None) -> None:
+        progress.append((value, total, message))
 
-    async def on_log(message: Any) -> None:  # noqa: ANN401 - fastmcp's LogMessage type
-        logs.append(str(message.data))
-
-    async with Client(mcp, log_handler=on_log) as client:
+    caplog.set_level(logging.INFO, logger="groupme_mcp_server.tools.search")
+    async with Client(mcp) as client:
         await client.call_tool(
             "search_messages",
             {
@@ -307,9 +306,13 @@ async def test_progress_and_info_are_reported_during_the_scan(
         {"limit": "100"},
         {"limit": "50", "before_id": "a100"},
     ]
-    assert progress == [(100.0, 150.0), (150.0, 150.0)]
-    assert any("Searching backwards" in entry for entry in logs)
-    assert any("Search finished" in entry for entry in logs)
+    # Status text rides on progress notifications (MCP logging is deprecated).
+    assert progress == [
+        (100.0, 150.0, "Scanned 100 of up to 150 message(s); 0 match(es) so far."),
+        (150.0, 150.0, "Scanned 150 of up to 150 message(s); 0 match(es) so far."),
+    ]
+    assert any("Searching backwards" in r.getMessage() for r in caplog.records)
+    assert any("Search finished" in r.getMessage() for r in caplog.records)
 
 
 async def test_direct_function_call_without_ctx_still_searches(
