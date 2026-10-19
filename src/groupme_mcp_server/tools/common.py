@@ -22,7 +22,7 @@ from groupme_mcp_server.errors import (
 from groupme_mcp_server.settings import get_settings
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
 READ_ONLY_ANNOTATIONS: dict[str, bool] = {
     "read_only_hint": True,
@@ -102,7 +102,7 @@ def tool_error_message(
 @asynccontextmanager
 async def tool_client(
     example: str, *, not_found_detail: str | None = None
-) -> AsyncIterator[GroupMeClient]:
+) -> AsyncGenerator[GroupMeClient]:
     """Yield an open client, mapping failures to actionable ``ToolError`` text.
 
     Args:
