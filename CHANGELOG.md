@@ -7,6 +7,15 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Do not edit entries by hand — they are regenerated from commit history. See
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how a release is cut.
 
+## [0.2.2](https://github.com/oddrationale/groupme-mcp-server/compare/v0.2.1...v0.2.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **deps:** bump authlib, dnspython, and certifi for security fixes ([#54](https://github.com/oddrationale/groupme-mcp-server/issues/54)) ([db3e7d1](https://github.com/oddrationale/groupme-mcp-server/commit/db3e7d1891476778e6af3b60ad81f0d41384e684))
+* **deps:** bump fastmcp from 4.0.10 to 4.1.2 for GHSA-vqqp-x5qm-5qp4 and GHSA-7xgj-8392-5q4r ([#50](https://github.com/oddrationale/groupme-mcp-server/issues/50)) ([7c28bfe](https://github.com/oddrationale/groupme-mcp-server/commit/7c28bfed8b3cbcfb696be35e5fb56367c94d87df))
+* **deps:** require fastmcp&gt;=4.1.2 ([#56](https://github.com/oddrationale/groupme-mcp-server/issues/56)) ([f5ee63b](https://github.com/oddrationale/groupme-mcp-server/commit/f5ee63b2ec086a0e7ed85e8db99d282d7403d1c3))
+
 ## [0.2.1](https://github.com/oddrationale/groupme-mcp-server/compare/v0.2.0...v0.2.1) (2026-09-30)
 
 
