@@ -1,0 +1,60 @@
+# Arms GitHub's native auto-merge on low-risk Dependabot pull requests, so they
+# merge on their own once the required checks pass. The policy lives in
+# scripts/dependabot_automerge.py (with tests); anything it does not recognise
+# is left for a human.
+#
+# The merge is made with the Release Please GitHub App's token, not
+# GITHUB_TOKEN: a push made with GITHUB_TOKEN does not trigger other workflows,
+# so CI, Release Please and CodeQL would never run on the merged commit and
+# Horizon (which deploys once CI on main passes) would never ship it.
+# Dependabot-triggered runs can only read Dependabot secrets, so
+# RELEASE_PLEASE_CLIENT_ID and RELEASE_PLEASE_PRIVATE_KEY must also be
+# registered under Settings -> Secrets and variables -> Dependabot.
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  auto-merge:
+    name: Auto-merge low-risk updates
+    # The pull request's author cannot be spoofed the way github.actor can.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read # fetch-metadata reads the pull request's commits
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+      - name: Apply the auto-merge policy
+        id: policy
+        env:
+          UPDATED_DEPENDENCIES: ${{ steps.metadata.outputs.updated-dependencies-json }}
+        run: python3 scripts/dependabot_automerge.py
+      - name: Mint a GitHub App token
+        id: app-token
+        if: steps.policy.outputs.automerge == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ secrets.RELEASE_PLEASE_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_PRIVATE_KEY }}
+          permission-contents: write # make the merge commit
+          permission-pull-requests: write # enable auto-merge
+      - name: Enable auto-merge
+        if: steps.policy.outputs.automerge == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"

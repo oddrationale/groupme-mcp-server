@@ -70,7 +70,9 @@ tokens and private message content. When reporting or reproducing an issue:
 - CodeQL code scanning (`security-extended` + `security-and-quality`) on every
   push, pull request, and weekly
 - Secret scanning with push protection
-- Dependabot alerts and weekly dependency updates
+- Dependabot alerts and weekly dependency updates; low-risk updates merge
+  automatically once CI passes, everything else waits for review
+- Daily `pip-audit` of the runtime dependencies pinned in `uv.lock`
 - Dependency review on pull requests, failing on moderate or higher severity
 - `zizmor` static analysis of GitHub Actions workflows
 - OpenSSF Scorecard, published weekly
