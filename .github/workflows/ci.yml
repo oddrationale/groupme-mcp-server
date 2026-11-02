@@ -104,9 +104,34 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-      - run: uv sync --all-groups
+      # Mirror Horizon's build: runtime dependencies only (it syncs with
+      # --no-dev), then the same inspect command. A runtime import that only
+      # works because a dev tool happens to be installed fails here, not there.
+      - run: uv sync --no-dev
       - name: fastmcp inspect
-        run: uv run fastmcp inspect src/groupme_mcp_server/server.py:mcp
+        run: >-
+          uv run --no-dev fastmcp inspect -f fastmcp -o "$RUNNER_TEMP/server-info.json"
+          src/groupme_mcp_server/server.py:mcp
+
+  stdio-e2e:
+    name: Stdio end-to-end
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --all-groups
+      # Spawns the console script and drives it over real stdio MCP with a
+      # fake token. Needs no credentials, only network access to GroupMe
+      # (which must answer 401).
+      - name: pytest (stdio end-to-end)
+        run: uv run pytest -m integration --no-cov tests/integration/test_stdio_e2e.py
 
   build:
     name: Build distribution
@@ -132,7 +157,7 @@ jobs:
   ci-ok:
     name: CI
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, entrypoint, build]
+    needs: [lint, typecheck, test, entrypoint, stdio-e2e, build]
     if: always()
     permissions: {}
     steps:

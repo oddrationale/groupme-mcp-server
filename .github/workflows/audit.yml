@@ -1,0 +1,41 @@
+# Audits the runtime dependencies pinned in uv.lock (what Horizon installs)
+# against the PyPI / OSV advisory databases. Dependabot alerts lag these
+# sources and miss transitive packages, so this catches a newly published CVE
+# within a day instead of whenever a Dependabot PR happens to mention it.
+name: Dependency audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: [uv.lock, pyproject.toml, .github/workflows/audit.yml]
+  schedule:
+    - cron: "41 11 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pip-audit:
+    name: pip-audit (runtime dependencies)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - name: Export the runtime dependencies from uv.lock
+        run: >-
+          uv export --frozen --no-dev --no-hashes --no-emit-project
+          --output-file "$RUNNER_TEMP/requirements.txt"
+      - name: pip-audit
+        run: >-
+          uvx pip-audit@2.10.1 --no-deps --disable-pip
+          --requirement "$RUNNER_TEMP/requirements.txt"

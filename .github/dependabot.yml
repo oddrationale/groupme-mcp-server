@@ -1,3 +1,7 @@
+# Groups are drawn along the auto-merge policy in
+# scripts/dependabot_automerge.py, so a group is either entirely low-risk
+# (auto-merged once CI passes) or entirely for review, and one review-only
+# update never holds back the rest. Major updates stay ungrouped.
 version: 2
 updates:
   - package-ecosystem: uv
@@ -22,6 +26,15 @@ updates:
       production-patches:
         dependency-type: production
         update-types: [patch]
+      # Needs review: a minor runtime update can change behaviour CI's mocked
+      # GroupMe API does not exercise.
+      production-minor:
+        dependency-type: production
+        update-types: [minor]
+      # Security fixes, including transitive packages, in one pull request.
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -40,3 +53,19 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        # Keep in sync with RELEASE_ONLY_ACTIONS in scripts/dependabot_automerge.py.
+        exclude-patterns:
+          - actions/attest-build-provenance
+          - actions/create-github-app-token
+          - googleapis/release-please-action
+          - pypa/gh-action-pypi-publish
+        update-types: [minor, patch]
+      # Needs review: these only run while cutting a release, so pull request
+      # CI never exercises them.
+      release-actions:
+        patterns:
+          - actions/attest-build-provenance
+          - actions/create-github-app-token
+          - googleapis/release-please-action
+          - pypa/gh-action-pypi-publish
+        update-types: [minor, patch]

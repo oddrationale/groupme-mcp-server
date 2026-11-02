@@ -188,8 +188,17 @@ Mock GroupMe HTTP calls — never hit the real API in tests. Warnings are errors
 ## CI/CD
 
 - `ci.yml` — lint, ty, test matrix (3.13/3.14 × Linux/macOS/Windows), Horizon
-  entrypoint check, build.
+  entrypoint check (runtime dependencies only, like Horizon), stdio end-to-end
+  test, build.
 - `codeql.yml`, `scorecard.yml`, `zizmor.yml`, `dependency-review.yml` — security.
+- `audit.yml` — `pip-audit` of the runtime dependencies in `uv.lock`: daily, on
+  push to `main`, and on PRs that touch the lockfile.
+- `dependabot-auto-merge.yml` — arms auto-merge on low-risk Dependabot PRs
+  (dev tools patch/minor, runtime and transitive patch, transitive security
+  minor, Actions patch/minor except the release-only ones). The policy and its
+  tests are `scripts/dependabot_automerge.py` and
+  `tests/test_dependabot_automerge.py`; the groups in `.github/dependabot.yml`
+  follow the same lines, so change them together.
 - `autofix.yml` — autofix.ci pushes formatting fixes to PRs.
 - `release.yml` — tag `v*` publishes to PyPI via Trusted Publishing.
 - **Deployment is not in Actions.** Horizon's GitHub App builds on push to
