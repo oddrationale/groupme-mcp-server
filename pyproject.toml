@@ -209,6 +209,9 @@ markers = [
     "integration: talks to real external services (GroupMe API, the deployed server) or spawns subprocesses; excluded from the default run and the coverage gate",
 ]
 asyncio_mode = "auto"
+# Explicit so pytest-asyncio's "unset loop scope" deprecation warning, which
+# filterwarnings = ["error"] turns into a startup failure, never fires.
+asyncio_default_fixture_loop_scope = "function"
 xfail_strict = true
 filterwarnings = ["error"]
 log_cli_level = "INFO"
