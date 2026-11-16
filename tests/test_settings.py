@@ -99,7 +99,7 @@ def test_rejects_unknown_log_level(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_is_frozen() -> None:
     settings = Settings()
     with pytest.raises(ValidationError):
-        settings.log_level = "DEBUG"
+        settings.log_level = "DEBUG"  # ty: ignore[invalid-assignment]
 
 
 def test_get_settings_is_cached() -> None:
