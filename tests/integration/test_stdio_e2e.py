@@ -27,6 +27,7 @@ _EXPECTED_TOOLS = frozenset(
         "get_conversation_context",
         "get_highlights",
         "list_conversations",
+        "list_topics",
         "react_to_message",
         "read_messages",
         "search_messages",

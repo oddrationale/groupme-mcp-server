@@ -25,6 +25,7 @@ from groupme_mcp_server.models import (
     parse_group,
     parse_me,
     parse_message,
+    parse_topic,
     unwrap_envelope,
 )
 from groupme_mcp_server.observability import instrumented_async_transport
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
         Me,
         Message,
         MessageId,
+        Topic,
         UserId,
     )
     from groupme_mcp_server.settings import Settings
@@ -213,6 +215,25 @@ class GroupMeClient:
             params["omit"] = "memberships"
         raw = _expect_list(await self._request("GET", "/groups", params=params), "groups")
         return _parse_list(parse_group, raw, "group")
+
+    async def list_topics(self, group_id: GroupId) -> list[Topic]:
+        """List a group's topics using GroupMe's undocumented subgroup endpoint.
+
+        Args:
+            group_id: Parent group id.
+
+        Returns:
+            All topics returned by the endpoint, or an empty list.
+
+        Raises:
+            GroupMeApiError: If the response contains a different parent.
+        """
+        raw = _expect_list(await self._request("GET", f"/groups/{group_id}/subgroups"), "topics")
+        topics = _parse_list(parse_topic, raw, "topic")
+        if any(topic.parent_id != group_id for topic in topics):
+            msg = "GroupMe returned a topic belonging to a different parent group"
+            raise GroupMeApiError(msg)
+        return topics
 
     async def get_group(self, group_id: GroupId) -> Group:
         """Fetch one group by id.

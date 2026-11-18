@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Literal
 # LeaderboardPeriod is a pydantic field annotation below, so it must exist at
 # runtime even though it is "only" a type.
 from groupme_mcp_server.models import (
+    DirectRef,
     Group,
     GroupMeModel,
     GroupRef,
@@ -24,13 +25,14 @@ from groupme_mcp_server.models import (
     LocationAttachment,
     MentionsAttachment,
     ReplyAttachment,
+    TopicRef,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from datetime import datetime
 
-    from groupme_mcp_server.models import Attachment, DirectChat, DirectRef, Member, Message
+    from groupme_mcp_server.models import Attachment, DirectChat, Member, Message
     from groupme_mcp_server.search import SearchScan
 
 ResponseFormat = Literal["concise", "detailed"]
@@ -63,6 +65,7 @@ class ConversationSummary(GroupMeModel):
     name: str
     group_id: str | None = None
     other_user_id: str | None = None
+    children_count: int | None = None
     member_count: int | None = None
     last_message: str | None = None
     last_active: str | None = None
@@ -80,6 +83,24 @@ class ConversationPage(GroupMeModel):
     conversations: tuple[ConversationSummary, ...]
     count: int
     note: str | None = None
+
+
+class TopicSummary(GroupMeModel):
+    """A topic destination; descriptions are detailed-only."""
+
+    topic_id: str
+    parent_group_id: str
+    name: str
+    type: str
+    description: str | None = None
+
+
+class TopicPage(GroupMeModel):
+    """Topics belonging to one parent group."""
+
+    group_id: str
+    topics: tuple[TopicSummary, ...]
+    count: int
 
 
 class MessageView(GroupMeModel):
@@ -136,6 +157,7 @@ class GroupContext(GroupMeModel):
     group_id: str
     name: str
     description: str | None = None
+    children_count: int | None = None
     member_count: int | None = None
     last_active: str | None = None
     members: tuple[MemberView, ...] = ()
@@ -155,7 +177,9 @@ class SentMessage(GroupMeModel):
     """
 
     message_id: str
-    kind: Literal["group", "direct"]
+    kind: Literal["group", "direct", "topic"]
+    parent_group_id: str | None = None
+    topic_id: str | None = None
     group_id: str | None = None
     other_user_id: str | None = None
     conversation_id: str | None = None
@@ -407,6 +431,7 @@ def conversation_summary(
             name=conversation.name,
             group_id=str(conversation.id),
             member_count=conversation.member_count,
+            children_count=conversation.children_count,
             last_message=last_message,
             last_active=last_active,
             description=conversation.description if detailed else None,
@@ -487,7 +512,9 @@ def build_message_page(
     )
 
 
-def sent_message_view(message: Message, conversation: GroupRef | DirectRef) -> SentMessage:
+def sent_message_view(
+    message: Message, conversation: GroupRef | DirectRef | TopicRef
+) -> SentMessage:
     """Render the confirmation for a just-sent message.
 
     Args:
@@ -501,9 +528,13 @@ def sent_message_view(message: Message, conversation: GroupRef | DirectRef) -> S
     return SentMessage(
         message_id=str(message.id),
         kind=conversation.kind,
+        parent_group_id=conversation.parent_group_id
+        if isinstance(conversation, TopicRef)
+        else None,
+        topic_id=conversation.topic_id if isinstance(conversation, TopicRef) else None,
         group_id=str(conversation.group_id) if isinstance(conversation, GroupRef) else None,
         other_user_id=(
-            None if isinstance(conversation, GroupRef) else str(conversation.other_user_id)
+            str(conversation.other_user_id) if isinstance(conversation, DirectRef) else None
         ),
         conversation_id=(
             str(message.conversation_id) if message.conversation_id is not None else None
@@ -575,6 +606,7 @@ def build_group_context(
         name=group.name,
         description=group.description,
         member_count=group.member_count,
+        children_count=group.children_count,
         last_active=relative_age(activity, now) if activity is not None else None,
         members=tuple(member_view(m, detailed=detailed) for m in group.members or ()),
         recent_messages=page.messages,
