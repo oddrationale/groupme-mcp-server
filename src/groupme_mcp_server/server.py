@@ -19,7 +19,10 @@ Tools for reading, searching, and writing GroupMe conversations (GroupMe API
 v3) as the authenticated user; requests need a GROUPME_ACCESS_TOKEN in the
 server's environment. Start with list_conversations: it lists groups and
 direct-message chats along with the group_id / other_user_id values every
-other tool takes. From there, read history with read_messages (oldest first,
+other tool takes. For groups with children_count, call list_topics(group_id) to
+discover topic names and ids. Use kind="topic" with parent_group_id and topic_id
+for read_messages, search_messages, and send_message; announcement posting
+permissions are enforced by GroupMe. From there, read history with read_messages (oldest first,
 next_before_id cursor), orient yourself in one group with
 get_conversation_context, find specific messages with search_messages, and
 catch up on a busy group with get_highlights; write with send_message (each

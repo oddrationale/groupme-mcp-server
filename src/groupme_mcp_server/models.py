@@ -160,6 +160,7 @@ class Group(GroupMeModel):
     name: str
     description: str | None = None
     image_url: str | None = None
+    children_count: int | None = None
     member_count: int | None = None
     members: tuple[Member, ...] | None = None
     creator_user_id: UserId | None = None
@@ -196,6 +197,45 @@ class GroupRef(GroupMeModel):
     group_id: GroupId = Field(description="The group's id, e.g. from list_conversations.")
 
 
+class Topic(GroupMeModel):
+    """A topic nested inside a parent group; unknown topic types are preserved."""
+
+    id: GroupId
+    parent_id: GroupId
+    name: str
+    type: str
+    description: str | None = None
+
+
+class TopicRef(GroupMeModel):
+    """Explicit parent/topic reference, preventing accidental main-chat routing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["topic"] = "topic"
+    parent_group_id: str = Field(pattern=r"^[0-9]+$", description="Parent group id.")
+    topic_id: str = Field(pattern=r"^[0-9]+$", description="Topic id from list_topics.")
+
+
+def parse_topic(raw: dict[str, Any]) -> Topic:
+    """Normalize a subgroup payload, whose name is stored in ``topic``.
+
+    Args:
+        raw: A GroupMe subgroup object.
+
+    Returns:
+        The topic with string-normalized identifiers.
+    """
+    ref = TopicRef(parent_group_id=str(raw["parent_id"]), topic_id=str(raw["id"]))
+    return Topic(
+        id=GroupId(ref.topic_id),
+        parent_id=GroupId(ref.parent_group_id),
+        name=raw["topic"],
+        type=raw["type"],
+        description=raw.get("description"),
+    )
+
+
 class DirectRef(GroupMeModel):
     """Reference to a direct-message conversation, for tool inputs.
 
@@ -211,8 +251,8 @@ class DirectRef(GroupMeModel):
     )
 
 
-ConversationRef = Annotated[GroupRef | DirectRef, Field(discriminator="kind")]
-"""A conversation reference: exactly one of a group id or a DM partner id."""
+ConversationRef = Annotated[GroupRef | DirectRef | TopicRef, Field(discriminator="kind")]
+"""A conversation reference: a group, DM partner, or parent/topic pair."""
 
 _KNOWN_ATTACHMENTS: dict[str, type[Attachment]] = {
     "image": ImageAttachment,
@@ -367,6 +407,7 @@ def parse_group(raw: dict[str, Any]) -> Group:
     return Group(
         id=GroupId(str(raw["id"])),
         name=str(raw["name"]),
+        children_count=raw.get("children_count"),
         description=raw.get("description"),
         image_url=raw.get("image_url"),
         member_count=len(members) if members is not None else None,

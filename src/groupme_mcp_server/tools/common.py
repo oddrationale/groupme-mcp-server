@@ -19,6 +19,7 @@ from groupme_mcp_server.errors import (
     GroupMeNotFoundError,
     GroupMeRateLimitError,
 )
+from groupme_mcp_server.models import GroupId, GroupRef, TopicRef
 from groupme_mcp_server.settings import get_settings
 
 if TYPE_CHECKING:
@@ -52,6 +53,31 @@ REACTION_ANNOTATIONS: dict[str, bool] = {
 in the same state, and an unlike only removes this user's own like."""
 
 
+async def resolve_group_id(client: GroupMeClient, conversation: GroupRef | TopicRef) -> GroupId:
+    """Resolve a group-like target, validating topics against their parent.
+
+    Args:
+        client: Open GroupMe client.
+        conversation: Caller-selected group or topic destination.
+
+    Returns:
+        The validated group or topic id.
+
+    Raises:
+        ValueError: If the topic is not listed under the supplied parent.
+    """
+    if isinstance(conversation, TopicRef):
+        topics = await client.list_topics(GroupId(conversation.parent_group_id))
+        if not any(topic.id == conversation.topic_id for topic in topics):
+            msg = (
+                "Topic is not available under this parent; "
+                "call list_topics with the parent group id"
+            )
+            raise ValueError(msg)
+        return GroupId(conversation.topic_id)
+    return GroupId(conversation.group_id)
+
+
 def create_client() -> GroupMeClient:
     """Build a GroupMe client from the process-wide settings.
 
@@ -76,7 +102,7 @@ def tool_error_message(
         exc: The typed error raised by the client layer.
         example: A valid example call for the failing tool.
         not_found_detail: Tool-specific guidance for a 404; the default
-            points at ``list_conversations`` for conversation ids.
+            points at ``list_conversations`` or ``list_topics`` for ids.
 
     Returns:
         The message to raise as a ``ToolError``.
@@ -91,7 +117,9 @@ def tool_error_message(
             if not_found_detail is not None
             else (
                 "GroupMe could not find that conversation. Check the id - "
-                "call list_conversations to discover valid group_id / other_user_id values."
+                "call list_conversations to discover valid group_id / other_user_id values. "
+                "For topics, call list_topics with parent_group_id to verify topic_id; "
+                "keep the topic destination rather than switching to the parent chat."
             )
         )
     else:

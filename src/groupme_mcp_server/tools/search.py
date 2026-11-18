@@ -18,7 +18,7 @@ from pydantic import Field
 from groupme_mcp_server.models import (
     MAX_MESSAGE_LIMIT,
     ConversationRef,
-    GroupId,
+    DirectRef,
     GroupRef,
     UserId,
 )
@@ -40,7 +40,9 @@ MAX_SCAN_CAP = 5000
 
 _EXAMPLE = (
     'search_messages(conversation={"kind": "group", "group_id": "12345678"}, '
-    'query="pizza", limit=5)'
+    'query="pizza", limit=5) or '
+    'search_messages(conversation={"kind": "topic", "parent_group_id": "12345678", '
+    '"topic_id": "23456789"}, query="trip", limit=5)'
 )
 
 
@@ -53,10 +55,11 @@ async def search_messages(  # noqa: PLR0913, PLR0917 - the search contract needs
     response_format: ResponseFormat = "concise",
     ctx: Context | None = None,
 ) -> MessageSearchPage:
-    """Search one conversation's message history for matching messages.
+    """Search a group, topic, or direct-message chat for matching messages.
 
     Use this to find specific messages ("who mentioned pizza?", "what did
     Ada say last week?") instead of paging manually with ``read_messages``.
+    Discover groups and DMs with ``list_conversations`` and topics with ``list_topics``.
     GroupMe has no search API, so this scans backwards from the newest
     message, matching ``query`` against message text and ``sender_name``
     against sender names (both case-insensitive substrings), until ``limit``
@@ -66,7 +69,8 @@ async def search_messages(  # noqa: PLR0913, PLR0917 - the search contract needs
     ``note`` before concluding something was never said.
 
     Args:
-        conversation: Which conversation to search: ``{"kind": "group",
+        conversation: For topics, use ``{"kind": "topic", "parent_group_id": ...,
+            "topic_id": ...}`` from ``list_topics``. Otherwise use ``{"kind": "group",
             "group_id": ...}`` or ``{"kind": "direct", "other_user_id":
             ...}`` (ids from ``list_conversations``).
         query: Text to look for in message text. May be empty only when
@@ -99,20 +103,25 @@ async def search_messages(  # noqa: PLR0913, PLR0917 - the search contract needs
             max_messages_scanned,
             limit,
         )
+        destination = (
+            conversation
+            if isinstance(conversation, DirectRef)
+            else GroupRef(group_id=await common.resolve_group_id(client, conversation))
+        )
         while not scan_complete(scan, limit=limit, max_messages_scanned=max_messages_scanned):
-            if isinstance(conversation, GroupRef):
+            if isinstance(destination, GroupRef):
                 requested = next_page_size(
                     scan, max_messages_scanned=max_messages_scanned, page_limit=MAX_MESSAGE_LIMIT
                 )
                 page = await client.list_group_messages(
-                    GroupId(conversation.group_id),
+                    destination.group_id,
                     before_id=scan.last_scanned_id,
                     limit=requested,
                 )
             else:
                 requested = None
                 page = await client.list_direct_messages(
-                    UserId(conversation.other_user_id), before_id=scan.last_scanned_id
+                    UserId(destination.other_user_id), before_id=scan.last_scanned_id
                 )
             scan = apply_search_page(
                 scan,

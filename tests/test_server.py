@@ -19,6 +19,7 @@ READ_TOOLS = (
     "get_conversation_context",
     "get_highlights",
     "list_conversations",
+    "list_topics",
     "read_messages",
     "search_messages",
 )
