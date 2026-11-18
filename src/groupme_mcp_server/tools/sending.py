@@ -1,4 +1,4 @@
-"""The ``send_message`` tool: post to a group or a direct-message chat."""
+"""The ``send_message`` tool: post to a group, topic, or direct-message chat."""
 
 from __future__ import annotations
 
@@ -6,8 +6,7 @@ import logging
 
 from groupme_mcp_server.models import (
     ConversationRef,
-    GroupId,
-    GroupRef,
+    DirectRef,
     MessageId,
     UserId,
     build_outgoing_attachments,
@@ -21,7 +20,9 @@ logger = logging.getLogger(__name__)
 _EXAMPLE = (
     'send_message(conversation={"kind": "group", "group_id": "12345678"}, '
     'text="Hello everyone!") or '
-    'send_message(conversation={"kind": "direct", "other_user_id": "87654321"}, text="Hi!")'
+    'send_message(conversation={"kind": "direct", "other_user_id": "87654321"}, text="Hi!") or '
+    'send_message(conversation={"kind": "topic", "parent_group_id": "12345678", '
+    '"topic_id": "23456789"}, text="Trip details are ready.")'
 )
 
 
@@ -31,15 +32,18 @@ async def send_message(
     reply_to_message_id: str | None = None,
     image_url: str | None = None,
 ) -> SentMessage:
-    """Send a message to a GroupMe group or direct-message chat.
+    """Send a message to a GroupMe group, topic, or direct-message chat.
 
     Use this to post as the authenticated user once you know where to send
-    (ids come from ``list_conversations``). Each call sends a new message —
+    (group/DM ids come from ``list_conversations``, topic ids from ``list_topics``).
+    Each call sends a new message —
     calling twice posts twice. To reply to a specific message, pass its id
     (from ``read_messages``) as ``reply_to_message_id``.
 
     Args:
-        conversation: Where to send: ``{"kind": "group", "group_id": ...}``
+        conversation: For topics, use ``{"kind": "topic", "parent_group_id": ...,
+            "topic_id": ...}`` from ``list_topics``. Otherwise use
+            ``{"kind": "group", "group_id": ...}``
             or ``{"kind": "direct", "other_user_id": ...}``.
         text: The message text, at most 1000 characters. May be empty only
             when ``image_url`` is given.
@@ -57,10 +61,9 @@ async def send_message(
         reply_to = MessageId(reply_to_message_id) if reply_to_message_id is not None else None
         attachments = build_outgoing_attachments(reply_to, image_url)
         validate_outgoing_text(text, has_attachments=bool(attachments))
-        if isinstance(conversation, GroupRef):
-            message = await client.create_group_message(
-                GroupId(conversation.group_id), text, attachments=attachments
-            )
+        if not isinstance(conversation, DirectRef):
+            group_id = await common.resolve_group_id(client, conversation)
+            message = await client.create_group_message(group_id, text, attachments=attachments)
         else:
             message = await client.create_direct_message(
                 UserId(conversation.other_user_id), text, attachments=attachments

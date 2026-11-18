@@ -26,15 +26,55 @@ truncated.
 | Tool                       | What it does                                                                 |
 | -------------------------- | ---------------------------------------------------------------------------- |
 | `list_conversations`       | Merge groups and DMs into one recency-sorted list with last-message previews. |
-| `read_messages`            | Read one group or DM conversation, oldest first, with a `next_before_id` cursor. |
+| `list_topics`              | Discover topics within a group, including announcement topics.               |
+| `read_messages`            | Read one group, topic, or DM, oldest first, with a `next_before_id` cursor. |
 | `get_conversation_context` | One group's metadata, member list, and recent messages in a single call.      |
 | `search_messages`          | Search a conversation's history client-side (GroupMe has no search API), with honest scan accounting. |
 | `get_highlights`           | A group's top-liked messages for a day/week/month plus a member summary.      |
-| `send_message`             | Post to a group or DM, optionally as a reply or with a GroupMe-hosted image.  |
+| `send_message`             | Post to a group, topic, or DM, optionally as a reply or with a GroupMe-hosted image. |
 | `react_to_message`         | Like or unlike one message (ids from `read_messages` detailed format).        |
 
 The read tools accept `response_format`: `"concise"` (default, human-readable)
 or `"detailed"` (full ids and metadata).
+
+### Group topics
+
+Group listings and context preserve `children_count` when GroupMe supplies it.
+Use the parent group's ID to discover topics; topic IDs and parent IDs are
+returned as strings in both response formats. Detailed results also include
+descriptions.
+
+```json
+{"group_id": "12345678", "response_format": "detailed"}
+```
+
+Pass that object to `list_topics`. Then use a returned topic destination with
+`read_messages`, `search_messages`, or `send_message`, for example:
+
+```json
+{
+  "conversation": {
+    "kind": "topic",
+    "parent_group_id": "12345678",
+    "topic_id": "23456789"
+  },
+  "text": "Trip details are ready."
+}
+```
+
+For `read_messages`, replace `text` with optional pagination arguments such as
+`limit` and `before_id`; for `search_messages`, replace it with `query`.
+Replies and GroupMe-hosted image attachments use the same arguments as group
+messages. Send confirmations include `kind`, `parent_group_id`, and `topic_id`.
+
+Topic discovery depends on the **undocumented**
+`GET /groups/{parent_group_id}/subgroups` route. Each topic operation verifies
+membership under the supplied parent before using
+`/groups/{topic_id}/messages`. Failures never redirect to the parent chat.
+GroupMe controls access and posting permissions, including announcement-topic
+and developer-token restrictions; this server cannot bypass them. An ambiguous
+send failure is not automatically retried. Topic creation, deletion, membership
+management, and topic highlights are not supported.
 
 ## Connecting to the hosted server
 

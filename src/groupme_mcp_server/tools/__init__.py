@@ -18,6 +18,7 @@ from groupme_mcp_server.tools.messages import read_messages
 from groupme_mcp_server.tools.reactions import react_to_message
 from groupme_mcp_server.tools.search import search_messages
 from groupme_mcp_server.tools.sending import send_message
+from groupme_mcp_server.tools.topics import list_topics
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -26,6 +27,7 @@ __all__ = [
     "get_conversation_context",
     "get_highlights",
     "list_conversations",
+    "list_topics",
     "react_to_message",
     "read_messages",
     "register_all",
@@ -48,6 +50,7 @@ def register_all(mcp: FastMCP) -> None:
     """
     read_tools = (
         list_conversations,
+        list_topics,
         read_messages,
         get_conversation_context,
         search_messages,
