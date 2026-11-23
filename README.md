@@ -25,16 +25,61 @@ truncated.
 
 | Tool                       | What it does                                                                 |
 | -------------------------- | ---------------------------------------------------------------------------- |
-| `list_conversations`       | Merge groups and DMs into one recency-sorted list with last-message previews. |
-| `read_messages`            | Read one group or DM conversation, oldest first, with a `next_before_id` cursor. |
-| `get_conversation_context` | One group's metadata, member list, and recent messages in a single call.      |
+| `list_conversations`       | Merge groups and DMs into one recency-sorted list with last-message previews; groups list their topics. |
+| `read_messages`            | Read one group, topic, or DM, oldest first, with a `next_before_id` cursor. |
+| `get_conversation_context` | One group's (or topic's) metadata, member list, and recent messages in a single call. |
 | `search_messages`          | Search a conversation's history client-side (GroupMe has no search API), with honest scan accounting. |
-| `get_highlights`           | A group's top-liked messages for a day/week/month plus a member summary.      |
-| `send_message`             | Post to a group or DM, optionally as a reply or with a GroupMe-hosted image.  |
+| `get_highlights`           | A group's or topic's top-liked messages for a day/week/month plus a member summary. |
+| `send_message`             | Post to a group, topic, or DM, optionally as a reply or with a GroupMe-hosted image. |
 | `react_to_message`         | Like or unlike one message (ids from `read_messages` detailed format).        |
 
 The read tools accept `response_format`: `"concise"` (default, human-readable)
 or `"detailed"` (full ids and metadata).
+
+### Group topics
+
+A GroupMe group can contain **topics**: separate chats such as
+"Announcements" that sit inside the group. A group's main chat does not
+contain its topics' messages, so the tools address topics explicitly.
+
+`list_conversations` lists each group's topics under the group, most recently
+active first, with their own last-message previews:
+
+```json
+{
+  "kind": "group",
+  "name": "Trip Planning",
+  "group_id": "12345678",
+  "topics": [
+    {
+      "topic_id": "23456789",
+      "parent_group_id": "12345678",
+      "name": "Announcements",
+      "type": "announcement",
+      "last_message": "Ada: Trip details are ready.",
+      "last_active": "2h ago"
+    }
+  ]
+}
+```
+
+Pass a topic to `read_messages`, `search_messages`, or `send_message` as a
+`conversation`:
+
+```json
+{"kind": "topic", "parent_group_id": "12345678", "topic_id": "23456789"}
+```
+
+`get_conversation_context` and `get_highlights` take an optional `topic_id`
+next to the parent's `group_id`. Before sending to a topic, `send_message`
+checks that the topic belongs to the stated parent; a failed send is never
+redirected to the parent's main chat. GroupMe enforces who may post, for
+example in announcement topics.
+
+Topics come from GroupMe's **undocumented** `GET /groups/{id}/subgroups`
+route, which the GroupMe web client uses. If it fails, `list_conversations`
+still lists the group (without its topics) and says so in its `note`.
+Creating, editing, and deleting topics is not supported.
 
 ## Connecting to the hosted server
 

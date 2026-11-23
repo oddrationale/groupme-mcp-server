@@ -1,4 +1,4 @@
-"""The ``read_messages`` tool: unified group and direct-message reading."""
+"""The ``read_messages`` tool: unified group, topic, and direct-message reading."""
 
 from __future__ import annotations
 
@@ -10,8 +10,7 @@ from pydantic import Field
 from groupme_mcp_server.models import (
     MAX_MESSAGE_LIMIT,
     ConversationRef,
-    GroupId,
-    GroupRef,
+    DirectRef,
     MessageId,
     UserId,
 )
@@ -25,7 +24,9 @@ from groupme_mcp_server.tools import common
 
 _EXAMPLE = (
     'read_messages(conversation={"kind": "group", "group_id": "12345678"}, limit=20) or '
-    'read_messages(conversation={"kind": "direct", "other_user_id": "87654321"})'
+    'read_messages(conversation={"kind": "direct", "other_user_id": "87654321"}) or '
+    'read_messages(conversation={"kind": "topic", "parent_group_id": "12345678", '
+    '"topic_id": "23456789"}, limit=20)'
 )
 
 
@@ -38,16 +39,19 @@ async def read_messages(
 ) -> MessagePage:
     """Read messages from one GroupMe conversation, oldest first.
 
-    Use this to read or page through the history of a specific group or
-    direct-message chat once you know its id (from ``list_conversations``).
-    Sender names are resolved and attachments are normalized (image URLs,
-    reply/mention summaries). An empty page is a normal answer, not an
-    error: it means the conversation has no messages in the requested range.
+    Use this to read or page through the history of a specific group, topic,
+    or direct-message chat once you know its id (from ``list_conversations``,
+    which also lists each group's topics). Sender names are resolved and
+    attachments are normalized (image URLs, reply/mention summaries). An
+    empty page is a normal answer, not an error: it means the conversation
+    has no messages in the requested range.
 
     Args:
         conversation: Which conversation to read: ``{"kind": "group",
-            "group_id": ...}`` or ``{"kind": "direct", "other_user_id":
-            ...}``.
+            "group_id": ...}``, ``{"kind": "direct", "other_user_id": ...}``,
+            or ``{"kind": "topic", "parent_group_id": ..., "topic_id": ...}``
+            for a topic (a group's main chat does not include its topics'
+            messages).
         before_id: Read messages older than this message id (use the
             previous page's ``next_before_id``). At most one of ``before_id``
             and ``since_id`` may be given.
@@ -66,10 +70,12 @@ async def read_messages(
     detailed = response_format == "detailed"
     before = MessageId(before_id) if before_id is not None else None
     since = MessageId(since_id) if since_id is not None else None
-    async with common.tool_client(_EXAMPLE) as client:
-        if isinstance(conversation, GroupRef):
+    async with common.tool_client(
+        _EXAMPLE, not_found_detail=common.not_found_detail_for(conversation)
+    ) as client:
+        if not isinstance(conversation, DirectRef):
             newest_first = await client.list_group_messages(
-                GroupId(conversation.group_id),
+                common.message_group_id(conversation),
                 before_id=before,
                 since_id=since,
                 limit=limit,

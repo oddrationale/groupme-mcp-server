@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Literal
 # LeaderboardPeriod is a pydantic field annotation below, so it must exist at
 # runtime even though it is "only" a type.
 from groupme_mcp_server.models import (
+    DirectRef,
     Group,
     GroupMeModel,
     GroupRef,
@@ -24,13 +25,14 @@ from groupme_mcp_server.models import (
     LocationAttachment,
     MentionsAttachment,
     ReplyAttachment,
+    TopicRef,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from datetime import datetime
 
-    from groupme_mcp_server.models import Attachment, DirectChat, DirectRef, Member, Message
+    from groupme_mcp_server.models import Attachment, DirectChat, Member, Message, Topic
     from groupme_mcp_server.search import SearchScan
 
 ResponseFormat = Literal["concise", "detailed"]
@@ -50,19 +52,42 @@ EMPTY_MESSAGES_NOTE = (
 """Note attached to an empty message page (GroupMe signals this as HTTP 304)."""
 
 
+class TopicSummary(GroupMeModel):
+    """One topic of a group, as listed under its parent.
+
+    Pass ``{"kind": "topic", "parent_group_id": ..., "topic_id": ...}`` to
+    ``read_messages``, ``search_messages``, or ``send_message``. ``type`` is
+    GroupMe's topic type (e.g. ``"private"``, or ``"announcement"`` where
+    only some members may post). ``description`` and ``updated_at`` are
+    detailed-only.
+    """
+
+    topic_id: str
+    parent_group_id: str
+    name: str
+    type: str
+    last_message: str | None = None
+    last_active: str | None = None
+    description: str | None = None
+    updated_at: str | None = None
+
+
 class ConversationSummary(GroupMeModel):
     """One conversation in a ``list_conversations`` result.
 
     ``group_id`` (groups) and ``other_user_id`` (direct chats) are always
-    present so results can be chained into ``read_messages``. The
-    ``description``, ``share_url``, ``creator_user_id``, ``conversation_id``,
-    ``image_url``, and ``updated_at`` fields are detailed-only.
+    present so results can be chained into ``read_messages``. ``topics``
+    lists a group's topics (``None`` when it has none, or when they could
+    not be loaded - the page ``note`` then says so). The ``description``,
+    ``share_url``, ``creator_user_id``, ``conversation_id``, ``image_url``,
+    and ``updated_at`` fields are detailed-only.
     """
 
     kind: Literal["group", "direct"]
     name: str
     group_id: str | None = None
     other_user_id: str | None = None
+    topics: tuple[TopicSummary, ...] | None = None
     member_count: int | None = None
     last_message: str | None = None
     last_active: str | None = None
@@ -128,14 +153,19 @@ class MemberView(GroupMeModel):
 class GroupContext(GroupMeModel):
     """The result of ``get_conversation_context``.
 
-    ``recent_messages`` is oldest first; ``message_note`` is set when the
-    group has no (recent) messages. ``share_url``, ``creator_user_id``,
+    For a group's main chat, ``topics`` lists its topics. For a topic,
+    ``topic`` describes it and ``recent_messages`` come from the topic, while
+    the group fields and ``members`` describe the parent group.
+    ``recent_messages`` is oldest first; ``message_note`` is set when there
+    are no (recent) messages. ``share_url``, ``creator_user_id``,
     ``image_url``, and ``updated_at`` are detailed-only.
     """
 
     group_id: str
     name: str
     description: str | None = None
+    topic: TopicSummary | None = None
+    topics: tuple[TopicSummary, ...] = ()
     member_count: int | None = None
     last_active: str | None = None
     members: tuple[MemberView, ...] = ()
@@ -155,7 +185,9 @@ class SentMessage(GroupMeModel):
     """
 
     message_id: str
-    kind: Literal["group", "direct"]
+    kind: Literal["group", "direct", "topic"]
+    parent_group_id: str | None = None
+    topic_id: str | None = None
     group_id: str | None = None
     other_user_id: str | None = None
     conversation_id: str | None = None
@@ -223,15 +255,17 @@ class MemberHighlight(GroupMeModel):
 
 
 class GroupHighlights(GroupMeModel):
-    """The result of ``get_highlights``: what mattered in one group.
+    """The result of ``get_highlights``: what mattered in one group or topic.
 
     Built from GroupMe's likes leaderboard for the period: the top-liked
-    messages plus per-member aggregates over those messages. ``note`` is set
+    messages plus per-member aggregates over those messages. ``topic_id`` is
+    set when the highlights are for a topic of ``group_id``. ``note`` is set
     when the period has no liked messages.
     """
 
     group_id: str
     period: LeaderboardPeriod
+    topic_id: str | None = None
     top_messages: tuple[HighlightedMessage, ...]
     top_members: tuple[MemberHighlight, ...]
     note: str | None = None
@@ -304,7 +338,7 @@ def describe_attachment(attachment: Attachment) -> str:
     return f"[{attachment.type} attachment]"
 
 
-def last_activity(conversation: Group | DirectChat) -> datetime | None:
+def last_activity(conversation: Group | DirectChat | Topic) -> datetime | None:
     """Determine when a conversation last saw message activity.
 
     The last message's timestamp is preferred over ``updated_at`` because
@@ -313,7 +347,7 @@ def last_activity(conversation: Group | DirectChat) -> datetime | None:
     last-message preview.
 
     Args:
-        conversation: Either kind of conversation.
+        conversation: A group, direct chat, or topic.
 
     Returns:
         The preview message's timestamp, falling back to ``updated_at``, or
@@ -375,7 +409,7 @@ def _iso(moment: datetime | None) -> str | None:
     return moment.isoformat() if moment is not None else None
 
 
-def _last_message_line(conversation: Group | DirectChat) -> str | None:
+def _last_message_line(conversation: Group | DirectChat | Topic) -> str | None:
     preview = conversation.preview
     if preview is None:
         return None
@@ -383,8 +417,56 @@ def _last_message_line(conversation: Group | DirectChat) -> str | None:
     return f"{preview.sender_name}: {body}" if preview.sender_name else body
 
 
+def sort_topics(topics: Iterable[Topic]) -> list[Topic]:
+    """Order topics by recency, most recently active first.
+
+    Args:
+        topics: One group's topics, in any order.
+
+    Returns:
+        A new list sorted by
+        [`last_activity`][groupme_mcp_server.rendering.last_activity]
+        descending; topics with no known activity sort last.
+    """
+
+    def key(topic: Topic) -> tuple[bool, float]:
+        activity = last_activity(topic)
+        return (activity is None, -activity.timestamp() if activity is not None else 0.0)
+
+    return sorted(topics, key=key)
+
+
+def topic_summary(topic: Topic, now: datetime, *, detailed: bool) -> TopicSummary:
+    """Render one topic for a listing or a context bundle.
+
+    Args:
+        topic: The normalized topic.
+        now: The current (aware) time, for relative ages.
+        detailed: Include the detailed-only fields.
+
+    Returns:
+        The topic view; detailed-only fields are ``None`` when ``detailed``
+        is false.
+    """
+    activity = last_activity(topic)
+    return TopicSummary(
+        topic_id=str(topic.id),
+        parent_group_id=str(topic.parent_id),
+        name=topic.name,
+        type=topic.type,
+        last_message=_last_message_line(topic),
+        last_active=relative_age(activity, now) if activity is not None else None,
+        description=topic.description if detailed else None,
+        updated_at=_iso(topic.updated_at) if detailed else None,
+    )
+
+
 def conversation_summary(
-    conversation: Group | DirectChat, now: datetime, *, detailed: bool
+    conversation: Group | DirectChat,
+    now: datetime,
+    *,
+    detailed: bool,
+    topics: Sequence[Topic] | None = None,
 ) -> ConversationSummary:
     """Render one conversation for a listing.
 
@@ -392,6 +474,8 @@ def conversation_summary(
         conversation: Either kind of conversation.
         now: The current (aware) time, for relative ages.
         detailed: Include the detailed-only fields.
+        topics: A group's topics, already fetched; ``None`` or empty omits
+            them.
 
     Returns:
         The summary view; detailed-only fields are ``None`` when
@@ -407,6 +491,11 @@ def conversation_summary(
             name=conversation.name,
             group_id=str(conversation.id),
             member_count=conversation.member_count,
+            topics=(
+                tuple(topic_summary(t, now, detailed=detailed) for t in sort_topics(topics))
+                if topics
+                else None
+            ),
             last_message=last_message,
             last_active=last_active,
             description=conversation.description if detailed else None,
@@ -487,7 +576,9 @@ def build_message_page(
     )
 
 
-def sent_message_view(message: Message, conversation: GroupRef | DirectRef) -> SentMessage:
+def sent_message_view(
+    message: Message, conversation: GroupRef | DirectRef | TopicRef
+) -> SentMessage:
     """Render the confirmation for a just-sent message.
 
     Args:
@@ -501,9 +592,13 @@ def sent_message_view(message: Message, conversation: GroupRef | DirectRef) -> S
     return SentMessage(
         message_id=str(message.id),
         kind=conversation.kind,
+        parent_group_id=(
+            str(conversation.parent_group_id) if isinstance(conversation, TopicRef) else None
+        ),
+        topic_id=str(conversation.topic_id) if isinstance(conversation, TopicRef) else None,
         group_id=str(conversation.group_id) if isinstance(conversation, GroupRef) else None,
         other_user_id=(
-            None if isinstance(conversation, GroupRef) else str(conversation.other_user_id)
+            str(conversation.other_user_id) if isinstance(conversation, DirectRef) else None
         ),
         conversation_id=(
             str(message.conversation_id) if message.conversation_id is not None else None
@@ -554,26 +649,38 @@ def member_view(member: Member, *, detailed: bool) -> MemberView:
 
 
 def build_group_context(
-    group: Group, newest_first: Sequence[Message], now: datetime, *, detailed: bool
+    group: Group,
+    newest_first: Sequence[Message],
+    now: datetime,
+    *,
+    detailed: bool,
+    topics: Sequence[Topic] = (),
+    topic: Topic | None = None,
 ) -> GroupContext:
-    """Assemble the orientation bundle for one group.
+    """Assemble the orientation bundle for one group or one of its topics.
 
     Args:
-        group: The group's metadata (with members, when GroupMe sent them).
-        newest_first: Recent messages as GroupMe returns them (newest first).
+        group: The group's metadata (with members, when GroupMe sent them);
+            for a topic, its parent group.
+        newest_first: Recent messages as GroupMe returns them (newest first),
+            from the topic when ``topic`` is given.
         now: The current (aware) time, for relative ages.
         detailed: Include the detailed-only fields.
+        topics: The group's topics, listed when describing its main chat.
+        topic: The topic being described, if any.
 
     Returns:
         Group metadata, member list, and recent messages (oldest first) in
         one view.
     """
     page = build_message_page(newest_first, now, detailed=detailed)
-    activity = last_activity(group)
+    activity = last_activity(topic if topic is not None else group)
     return GroupContext(
         group_id=str(group.id),
         name=group.name,
         description=group.description,
+        topic=topic_summary(topic, now, detailed=detailed) if topic is not None else None,
+        topics=tuple(topic_summary(t, now, detailed=detailed) for t in sort_topics(topics)),
         member_count=group.member_count,
         last_active=relative_age(activity, now) if activity is not None else None,
         members=tuple(member_view(m, detailed=detailed) for m in group.members or ()),
@@ -728,16 +835,18 @@ def build_group_highlights(
     now: datetime,
     *,
     detailed: bool,
+    topic_id: str | None = None,
 ) -> GroupHighlights:
     """Assemble the ``get_highlights`` result from leaderboard messages.
 
     Args:
         messages: The group's most-liked messages for the period, in any
             order.
-        group_id: The group they belong to.
+        group_id: The group they belong to (a topic's parent group).
         period: The leaderboard window that produced them.
         now: The current (aware) time, for relative ages.
         detailed: Include the detailed-only fields.
+        topic_id: The topic they belong to, if any.
 
     Returns:
         The top [`TOP_MESSAGES_LIMIT`][groupme_mcp_server.rendering.TOP_MESSAGES_LIMIT]
@@ -748,6 +857,7 @@ def build_group_highlights(
     return GroupHighlights(
         group_id=group_id,
         period=period,
+        topic_id=topic_id,
         top_messages=tuple(
             _highlighted_message(m, now, detailed=detailed) for m in ranked[:TOP_MESSAGES_LIMIT]
         ),

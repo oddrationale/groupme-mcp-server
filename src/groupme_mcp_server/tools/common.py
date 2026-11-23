@@ -19,10 +19,13 @@ from groupme_mcp_server.errors import (
     GroupMeNotFoundError,
     GroupMeRateLimitError,
 )
+from groupme_mcp_server.models import TopicRef
 from groupme_mcp_server.settings import get_settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+
+    from groupme_mcp_server.models import GroupId, GroupRef
 
 READ_ONLY_ANNOTATIONS: dict[str, bool] = {
     "read_only_hint": True,
@@ -50,6 +53,43 @@ REACTION_ANNOTATIONS: dict[str, bool] = {
 }
 """Honest annotations for ``react_to_message``: liking or unliking twice lands
 in the same state, and an unlike only removes this user's own like."""
+
+
+TOPIC_NOT_FOUND_DETAIL = (
+    "GroupMe could not find that topic. Check both ids - call list_conversations: each "
+    "group entry lists its topics with their topic_id and parent_group_id. Keep the topic "
+    "destination rather than switching to the parent group's main chat."
+)
+"""404 guidance for calls addressed to a topic."""
+
+
+def message_group_id(conversation: GroupRef | TopicRef) -> GroupId:
+    """Pick the id whose ``/groups/{id}/messages`` holds a conversation's messages.
+
+    A topic's messages live under the topic's own id, never the parent's.
+
+    Args:
+        conversation: A group or topic reference.
+
+    Returns:
+        The topic id for a topic, otherwise the group id.
+    """
+    if isinstance(conversation, TopicRef):
+        return conversation.topic_id
+    return conversation.group_id
+
+
+def not_found_detail_for(conversation: object) -> str | None:
+    """Choose the 404 guidance for a conversation reference.
+
+    Args:
+        conversation: The reference a tool was called with.
+
+    Returns:
+        Topic-specific guidance for a topic, else ``None`` (the default
+        conversation guidance).
+    """
+    return TOPIC_NOT_FOUND_DETAIL if isinstance(conversation, TopicRef) else None
 
 
 def create_client() -> GroupMeClient:

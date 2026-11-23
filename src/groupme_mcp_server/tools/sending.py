@@ -1,4 +1,4 @@
-"""The ``send_message`` tool: post to a group or a direct-message chat."""
+"""The ``send_message`` tool: post to a group, topic, or direct-message chat."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import logging
 
 from groupme_mcp_server.models import (
     ConversationRef,
-    GroupId,
-    GroupRef,
+    DirectRef,
     MessageId,
+    TopicRef,
     UserId,
     build_outgoing_attachments,
     validate_outgoing_text,
@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 _EXAMPLE = (
     'send_message(conversation={"kind": "group", "group_id": "12345678"}, '
     'text="Hello everyone!") or '
-    'send_message(conversation={"kind": "direct", "other_user_id": "87654321"}, text="Hi!")'
+    'send_message(conversation={"kind": "direct", "other_user_id": "87654321"}, text="Hi!") or '
+    'send_message(conversation={"kind": "topic", "parent_group_id": "12345678", '
+    '"topic_id": "23456789"}, text="Trip details are ready.")'
 )
 
 
@@ -31,16 +33,20 @@ async def send_message(
     reply_to_message_id: str | None = None,
     image_url: str | None = None,
 ) -> SentMessage:
-    """Send a message to a GroupMe group or direct-message chat.
+    """Send a message to a GroupMe group, topic, or direct-message chat.
 
     Use this to post as the authenticated user once you know where to send
     (ids come from ``list_conversations``). Each call sends a new message —
-    calling twice posts twice. To reply to a specific message, pass its id
+    calling twice posts twice. A topic is checked against its parent group
+    before posting, and a failed send is never redirected to the parent's
+    main chat. Announcement topics may only accept posts from some members;
+    GroupMe enforces that. To reply to a specific message, pass its id
     (from ``read_messages``) as ``reply_to_message_id``.
 
     Args:
-        conversation: Where to send: ``{"kind": "group", "group_id": ...}``
-            or ``{"kind": "direct", "other_user_id": ...}``.
+        conversation: Where to send: ``{"kind": "group", "group_id": ...}``,
+            ``{"kind": "direct", "other_user_id": ...}``, or
+            ``{"kind": "topic", "parent_group_id": ..., "topic_id": ...}``.
         text: The message text, at most 1000 characters. May be empty only
             when ``image_url`` is given.
         reply_to_message_id: Id of the message being replied to, attached as
@@ -53,13 +59,19 @@ async def send_message(
         The sent message's id, conversation ids, timestamp, and echoed
         content, for chaining into ``react_to_message`` or ``read_messages``.
     """
-    async with common.tool_client(_EXAMPLE) as client:
+    async with common.tool_client(
+        _EXAMPLE, not_found_detail=common.not_found_detail_for(conversation)
+    ) as client:
         reply_to = MessageId(reply_to_message_id) if reply_to_message_id is not None else None
         attachments = build_outgoing_attachments(reply_to, image_url)
         validate_outgoing_text(text, has_attachments=bool(attachments))
-        if isinstance(conversation, GroupRef):
+        if isinstance(conversation, TopicRef):
+            # Writes are the costly place to be wrong: confirm the topic belongs
+            # to the stated parent (GroupMe answers 404 otherwise) before posting.
+            await client.get_topic(conversation.parent_group_id, conversation.topic_id)
+        if not isinstance(conversation, DirectRef):
             message = await client.create_group_message(
-                GroupId(conversation.group_id), text, attachments=attachments
+                common.message_group_id(conversation), text, attachments=attachments
             )
         else:
             message = await client.create_direct_message(

@@ -18,8 +18,7 @@ from pydantic import Field
 from groupme_mcp_server.models import (
     MAX_MESSAGE_LIMIT,
     ConversationRef,
-    GroupId,
-    GroupRef,
+    DirectRef,
     UserId,
 )
 from groupme_mcp_server.rendering import MessageSearchPage, ResponseFormat, build_search_page
@@ -40,7 +39,9 @@ MAX_SCAN_CAP = 5000
 
 _EXAMPLE = (
     'search_messages(conversation={"kind": "group", "group_id": "12345678"}, '
-    'query="pizza", limit=5)'
+    'query="pizza", limit=5) or '
+    'search_messages(conversation={"kind": "topic", "parent_group_id": "12345678", '
+    '"topic_id": "23456789"}, query="trip", limit=5)'
 )
 
 
@@ -53,7 +54,7 @@ async def search_messages(  # noqa: PLR0913, PLR0917 - the search contract needs
     response_format: ResponseFormat = "concise",
     ctx: Context | None = None,
 ) -> MessageSearchPage:
-    """Search one conversation's message history for matching messages.
+    """Search a group, topic, or direct-message chat for matching messages.
 
     Use this to find specific messages ("who mentioned pizza?", "what did
     Ada say last week?") instead of paging manually with ``read_messages``.
@@ -67,8 +68,10 @@ async def search_messages(  # noqa: PLR0913, PLR0917 - the search contract needs
 
     Args:
         conversation: Which conversation to search: ``{"kind": "group",
-            "group_id": ...}`` or ``{"kind": "direct", "other_user_id":
-            ...}`` (ids from ``list_conversations``).
+            "group_id": ...}``, ``{"kind": "direct", "other_user_id": ...}``,
+            or ``{"kind": "topic", "parent_group_id": ..., "topic_id": ...}``
+            (ids from ``list_conversations``). Searching a group covers its
+            main chat only, not its topics.
         query: Text to look for in message text. May be empty only when
             ``sender_name`` is given (a sender-only search).
         sender_name: Only match messages whose sender's display name
@@ -92,7 +95,9 @@ async def search_messages(  # noqa: PLR0913, PLR0917 - the search contract needs
     detailed = response_format == "detailed"
     filters = SearchFilters(query=query, sender_name=sender_name)
     scan = SearchScan()
-    async with common.tool_client(_EXAMPLE) as client:
+    async with common.tool_client(
+        _EXAMPLE, not_found_detail=common.not_found_detail_for(conversation)
+    ) as client:
         validate_search_filters(filters)
         logger.info(
             "Searching backwards through up to %d message(s) for up to %d match(es).",
@@ -100,12 +105,12 @@ async def search_messages(  # noqa: PLR0913, PLR0917 - the search contract needs
             limit,
         )
         while not scan_complete(scan, limit=limit, max_messages_scanned=max_messages_scanned):
-            if isinstance(conversation, GroupRef):
+            if not isinstance(conversation, DirectRef):
                 requested = next_page_size(
                     scan, max_messages_scanned=max_messages_scanned, page_limit=MAX_MESSAGE_LIMIT
                 )
                 page = await client.list_group_messages(
-                    GroupId(conversation.group_id),
+                    common.message_group_id(conversation),
                     before_id=scan.last_scanned_id,
                     limit=requested,
                 )
