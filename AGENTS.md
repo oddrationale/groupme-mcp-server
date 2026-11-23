@@ -43,7 +43,7 @@ All four must pass. There is no partial credit.
 ## Integration tests
 
 `tests/integration/` holds tests marked `integration` that talk to real
-services: read-only smoke tests against `api.groupme.com`, auth checks
+services: live smoke tests against `api.groupme.com`, auth checks
 against the deployed server at `https://groupme.fastmcp.app/mcp`, and a
 stdio end-to-end test that spawns `uv run groupme-mcp-server` as a
 subprocess. They are **deselected by default** (`-m "not integration"` in
@@ -54,9 +54,18 @@ never touch them. Run them with:
 uv run pytest -m integration --no-cov
 ```
 
-- The live GroupMe tests need `GROUPME_ACCESS_TOKEN` (in `.env`); they skip
-  themselves when it is absent, and they are strictly read-only — never add
-  a test that sends, likes, or otherwise mutates the account.
+- The live GroupMe tests need `GROUPME_ACCESS_TOKEN` (in `.env`) and skip
+  themselves when it is absent. Anything specific to one group or topic uses
+  **only** the account owner's dedicated test group and topic, set in `.env`
+  as `GROUPME_LIVE_GROUP_ID` and `GROUPME_LIVE_TOPIC_ID`; those tests skip
+  when the ids are unset and must never pick another group on their own.
+  Never commit the ids.
+- `test_groupme_live.py` is strictly read-only. `test_groupme_live_writes.py`
+  sends a few tagged messages, and may write **only** to that test group and
+  topic. Never add a test that writes anywhere else, or that likes, joins,
+  leaves, or otherwise changes the account. Avoid tools that fan out across
+  the whole account (e.g. `list_conversations`, which fetches every listed
+  group's topics) in group-specific tests.
 - The stdio and deployed-server tests need no credentials, only network
   access; the authenticated deployed-server check additionally requires an
   interactive browser OAuth login and only runs with

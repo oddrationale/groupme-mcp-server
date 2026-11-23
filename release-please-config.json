@@ -12,7 +12,7 @@
         {
           "type": "toml",
           "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name==\"groupme-mcp-server\")].version"
+          "jsonpath": "$.package[?(@.name.value=='groupme-mcp-server')].version"
         }
       ]
     }

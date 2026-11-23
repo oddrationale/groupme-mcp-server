@@ -2,7 +2,11 @@
 
 These tests require ``GROUPME_ACCESS_TOKEN`` (loaded from the repository
 ``.env`` file, never printed) and are skipped when it is absent. Every test
-is STRICTLY read-only: nothing is sent, liked, joined, or mutated.
+here is STRICTLY read-only: nothing is sent, liked, joined, or mutated.
+Account-wide listings read whatever the account has; anything specific to
+one group or topic reads only the dedicated test group and topic
+(``GROUPME_LIVE_GROUP_ID`` / ``GROUPME_LIVE_TOPIC_ID``, see ``conftest.py``)
+and skips when they are not configured.
 
 Run with: ``uv run pytest -m integration --no-cov``
 """
@@ -16,7 +20,7 @@ import pytest
 
 from groupme_mcp_server.client import GroupMeClient
 from groupme_mcp_server.errors import GroupMeNotFoundError
-from groupme_mcp_server.models import DirectChat, Group, Me, Message, Topic
+from groupme_mcp_server.models import DirectChat, Group, GroupId, Me, Message, Topic
 from groupme_mcp_server.settings import Settings
 
 if TYPE_CHECKING:
@@ -51,11 +55,8 @@ async def client() -> AsyncIterator[GroupMeClient]:
 
 
 @pytest.fixture
-async def first_group(client: GroupMeClient) -> Group:
-    groups = await client.list_groups(per_page=10, omit_memberships=True)
-    if not groups:
-        pytest.skip("this GroupMe account belongs to no groups")
-    return groups[0]
+async def live_group(client: GroupMeClient, live_group_id: GroupId) -> Group:
+    return await client.get_group(live_group_id)
 
 
 async def test_get_me_returns_the_callers_profile(client: GroupMeClient) -> None:
@@ -80,18 +81,18 @@ async def test_list_groups_with_memberships_parses(client: GroupMeClient) -> Non
 
 
 async def test_group_messages_page_and_not_modified_path(
-    client: GroupMeClient, first_group: Group
+    client: GroupMeClient, live_group: Group
 ) -> None:
-    messages = await client.list_group_messages(first_group.id, limit=5)
+    messages = await client.list_group_messages(live_group.id, limit=5)
     assert len(messages) <= 5
     assert all(isinstance(message, Message) for message in messages)
     if not messages:
-        pytest.skip("first group has no messages to exercise the 304 path against")
+        pytest.skip("the test group has no messages to exercise the 304 path against")
     newest = messages[0]
     assert newest.created_at.tzinfo is not None
     # Nothing exists after the newest message, so GroupMe answers HTTP 304
     # (or an empty page); either way the client returns an empty list.
-    unchanged = await client.list_group_messages(first_group.id, after_id=newest.id, limit=5)
+    unchanged = await client.list_group_messages(live_group.id, after_id=newest.id, limit=5)
     assert unchanged == []
 
 
@@ -102,25 +103,25 @@ async def test_direct_chats_parse_into_models(client: GroupMeClient) -> None:
         assert chat.other_user_id
 
 
-async def test_topics_and_their_messages_are_readable(client: GroupMeClient) -> None:
-    groups = await client.list_groups(per_page=100, omit_memberships=True)
-    parent = next((group for group in groups if group.topic_count), None)
-    if parent is None:
-        pytest.skip("no group with topics among the first 100 groups")
-    topics = await client.list_topics(parent.id)
-    assert topics, "GroupMe reported topics but the subgroups listing was empty"
-    assert all(isinstance(topic, Topic) and topic.parent_id == parent.id for topic in topics)
-    topic = await client.get_topic(parent.id, topics[0].id)
-    assert topic.id == topics[0].id
+async def test_test_topic_and_its_messages_are_readable(
+    client: GroupMeClient, live_group_id: GroupId, live_topic_id: GroupId
+) -> None:
+    parent = await client.get_group(live_group_id)
+    assert parent.topic_count > 0, "GroupMe no longer reports topics on the test group"
+    topics = await client.list_topics(live_group_id)
+    assert all(isinstance(topic, Topic) and topic.parent_id == live_group_id for topic in topics)
+    assert live_topic_id in [topic.id for topic in topics]
+    topic = await client.get_topic(live_group_id, live_topic_id)
+    assert topic.id == live_topic_id
     messages = await client.list_group_messages(topic.id, limit=5)
     assert all(message.conversation_id == topic.id for message in messages)
     # The likes leaderboard accepts a topic id too (an empty period is fine).
     await client.leaderboard(topic.id, period="month")
 
 
-async def test_leaderboard_endpoint_responds(client: GroupMeClient, first_group: Group) -> None:
+async def test_leaderboard_endpoint_responds(client: GroupMeClient, live_group: Group) -> None:
     try:
-        top = await client.leaderboard(first_group.id, period="week")
+        top = await client.leaderboard(live_group.id, period="week")
     except GroupMeNotFoundError:
         pytest.xfail("GroupMe appears to have retired the undocumented likes leaderboard endpoint")
     else:
