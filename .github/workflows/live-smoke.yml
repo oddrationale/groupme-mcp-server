@@ -1,5 +1,6 @@
-# Live smoke tests against the real GroupMe API. Manual only: they post a few
-# tagged messages (and one image) to the maintainer's dedicated test topic.
+# Live smoke tests against the real GroupMe API, run before a release: every MCP
+# tool, in the maintainer's dedicated test group's main chat and test topic.
+# Manual only: each run posts about a dozen tagged messages there.
 #
 # Settings live on the protected `groupme-live-smoke` environment, never on the
 # repository, so pull requests (including from forks) cannot reach them:
@@ -59,11 +60,12 @@ jobs:
             fi
             printf '%s=%s\n' "$name" "${!name}" >> .env
           done
-      - name: pytest (live GroupMe API, read-only then writes)
+      - name: pytest (live GroupMe API, read-only then writes, then stdio)
         run: >-
           uv run pytest -m integration --no-cov -v -rs
           tests/integration/test_groupme_live.py
           tests/integration/test_groupme_live_writes.py
+          tests/integration/test_stdio_live.py
       - name: Remove .env
         if: always()
         run: rm -f .env

@@ -61,12 +61,17 @@ uv run pytest -m integration --no-cov
   as `GROUPME_LIVE_GROUP_ID` and `GROUPME_LIVE_TOPIC_ID`; those tests skip
   when the ids are unset and must never pick another group on their own.
   Never commit the ids.
-- `test_groupme_live.py` is strictly read-only. `test_groupme_live_writes.py`
-  sends a few tagged messages, and may write **only** to that test group and
-  topic. Never add a test that writes anywhere else, or that likes, joins,
-  leaves, or otherwise changes the account. Avoid tools that fan out across
-  the whole account (e.g. `list_conversations`, which fetches every listed
-  group's topics) in group-specific tests.
+- `test_groupme_live.py` and `test_stdio_live.py` are strictly read-only.
+  `test_groupme_live_writes.py` is the release smoke test: it drives every
+  MCP tool, in both the test group's main chat and its topic, posting about
+  a dozen tagged messages and liking/unliking only its own messages. It may
+  write **only** to that test group and topic. Never add a test that writes
+  anywhere else, likes anything but its own test messages, or joins, leaves,
+  or otherwise changes the account. Avoid calls that fan out across the
+  whole account (e.g. `list_conversations` with a limit above 1, which
+  fetches every listed group's topics) in group-specific tests.
+- When you add or change a tool, extend the live smoke test to cover it:
+  the suite exists to make a release safe to ship.
 - The stdio and deployed-server tests need no credentials, only network
   access; the authenticated deployed-server check additionally requires an
   interactive browser OAuth login and only runs with
