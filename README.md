@@ -19,7 +19,7 @@ GroupMe has no search endpoint, and reporting honestly when a result is
 truncated.
 
 > **Status: early.** Read, search/highlights, and the core write tools
-> (sending messages, likes) are implemented; image upload is not yet.
+> (sending messages with images from any URL, likes) are implemented.
 
 ## Tools
 
@@ -30,7 +30,7 @@ truncated.
 | `get_conversation_context` | One group's (or topic's) metadata, member list, and recent messages in a single call. |
 | `search_messages`          | Search a conversation's history client-side (GroupMe has no search API), with honest scan accounting. |
 | `get_highlights`           | A group's or topic's top-liked messages for a day/week/month plus a member summary. |
-| `send_message`             | Post to a group, topic, or DM, optionally as a reply or with a GroupMe-hosted image. |
+| `send_message`             | Post to a group, topic, or DM, optionally as a reply or with an image from any public URL. |
 | `react_to_message`         | Like or unlike one message (ids from `read_messages` detailed format).        |
 
 The read tools accept `response_format`: `"concise"` (default, human-readable)
@@ -80,6 +80,24 @@ Topics come from GroupMe's **undocumented** `GET /groups/{id}/subgroups`
 route, which the GroupMe web client uses. If it fails, `list_conversations`
 still lists the group (without its topics) and says so in its `note`.
 Creating, editing, and deleting topics is not supported.
+
+### Images
+
+`send_message` accepts an `image_url`. GroupMe can only attach images hosted
+on its own image service, so a `https://i.groupme.com/...` URL is attached
+as-is and any other URL is downloaded and re-hosted there first. Because the
+server fetches a URL the caller chose, the download is locked down:
+
+- only `http`/`https` URLs without embedded credentials;
+- the host must resolve only to public addresses (no loopback, private,
+  link-local, or cloud-metadata ranges), and the connection goes to the
+  address that was checked, so DNS cannot redirect it internally;
+- at most 3 redirects, each checked again;
+- at most 15 MB, within 10 seconds, of a raster `image/*` type (no SVG);
+- the GroupMe token is never sent to the image's host.
+
+The download happens only after the message text (and, for a topic, the
+topic) has been validated, so a send that would fail fetches nothing.
 
 ## Connecting to the hosted server
 
@@ -131,7 +149,7 @@ come from a local `.env` file — see [`.env.example`](.env.example)).
 | `GROUPME_ACCESS_TOKEN`         | *(unset)*                     | GroupMe API token from <https://dev.groupme.com>. Optional at startup; required when a tool calls the API. |
 | `GROUPME_LOG_LEVEL`            | `INFO`                        | Verbosity of the server's own loggers: `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
 | `GROUPME_API_BASE_URL`         | `https://api.groupme.com/v3`  | GroupMe REST API base URL (override mainly for testing).           |
-| `GROUPME_IMAGE_API_BASE_URL`   | `https://image.groupme.com`   | GroupMe image-upload service base URL. Reserved: unused until image upload is implemented. |
+| `GROUPME_IMAGE_API_BASE_URL`   | `https://image.groupme.com`   | GroupMe image service base URL, where `send_message` re-hosts images. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | *(unset)*                     | OTLP/HTTP collector endpoint. Setting it turns tracing on.         |
 | `OTEL_EXPORTER_OTLP_HEADERS`   | *(unset)*                     | Extra headers for the OTLP exporter (e.g. `authorization=Bearer%20...`). |
 | `OTEL_SERVICE_NAME`            | `groupme-mcp-server`          | The `service.name` resource attribute on exported spans.           |
@@ -150,6 +168,10 @@ come from a local `.env` file — see [`.env.example`](.env.example)).
   `X-Access-Token` request header (never in URLs), is excluded from tool
   output and error messages, and is registered for redaction if OTel header
   capture is enabled.
+- **Outbound image downloads are restricted.** Re-hosting an `image_url` is
+  the only time the server fetches a caller-chosen URL; it refuses private and
+  internal addresses, caps size and time, and never forwards the GroupMe
+  token (see [Images](#images)).
 - **Hosted-deployment caveat.** On Horizon, tool requests and responses pass
   through Prefect's infrastructure and may appear in its request/payload
   logs. Message content read or written through the hosted server is visible

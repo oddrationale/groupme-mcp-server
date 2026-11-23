@@ -155,21 +155,21 @@ async def test_groupme_image_url_is_attached_directly(
 @pytest.mark.parametrize(
     "image_url",
     [
-        "https://example.com/cat.jpg",  # wrong host
-        "http://i.groupme.com/640x480.jpeg.abc123",  # wrong scheme
+        "ftp://example.com/cat.jpg",  # not http(s)
+        "https://user:pw@example.com/cat.jpg",  # embedded credentials
+        "not a url",
     ],
 )
-async def test_non_groupme_image_url_is_rejected_before_the_api(
+async def test_malformed_image_url_is_rejected_before_any_request(
     groupme_transport: TransportInstaller, image_url: str
 ) -> None:
     requests = groupme_transport(group_send_handler)
     async with Client(mcp) as client:
-        with pytest.raises(ToolError, match="image-service") as excinfo:
+        with pytest.raises(ToolError, match="image_url") as excinfo:
             await client.call_tool(
                 "send_message",
                 {"conversation": GROUP_TARGET, "text": "look", "image_url": image_url},
             )
-    assert "not supported yet" in str(excinfo.value)
     assert "A valid call looks like" in str(excinfo.value)
     assert requests == []
 

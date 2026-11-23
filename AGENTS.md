@@ -12,8 +12,9 @@ this repository. Humans: see [CONTRIBUTING.md](CONTRIBUTING.md).
 **Current state: read, agentic, and write tools implemented**
 (`list_conversations`, `read_messages`, `get_conversation_context`,
 `search_messages`, `get_highlights`, `send_message`, `react_to_message`),
-including group topics (GroupMe "subgroups"); image upload (arbitrary-URL
-images) is not yet.
+including group topics (GroupMe "subgroups") and images from any URL
+(re-hosted on GroupMe's image service through the hardened downloader in
+`media.py`).
 
 ## Toolchain — use these, not the alternatives
 
@@ -72,6 +73,15 @@ uv run pytest -m integration --no-cov
   `HORIZON_OAUTH_INTERACTIVE=1`.
 - `--no-cov` matters: integration runs exercise a subset of the code and
   would otherwise fail the 100% coverage gate.
+- The live GroupMe suites also run in GitHub Actions through the manual
+  `live-smoke.yml` workflow (Actions → Live smoke → Run workflow). Its
+  settings live only on the protected `groupme-live-smoke` environment: the
+  secret `GROUPME_ACCESS_TOKEN` and the variables `GROUPME_LIVE_GROUP_ID` and
+  `GROUPME_LIVE_TOPIC_ID`. The job writes them to `.env` and fails if any is
+  missing.
+  Never trigger it from a pull request, give it repository-level secrets, or
+  add a schedule without the maintainer's say-so: every run posts to the test
+  topic.
 
 ## Non-negotiables
 
@@ -102,6 +112,7 @@ src/groupme_mcp_server/
   models.py        # frozen pydantic models of GroupMe payloads
   rendering.py     # functional core: view models + concise/detailed rendering
   search.py        # functional core: client-side search scan logic
+  media.py         # imperative shell: hardened image download for re-hosting
   observability.py # stderr logging + opt-in OTel tracing
   tools/           # one module per MCP tool + register_all()
 tests/             # top-level, mirrors src/ module names
@@ -201,6 +212,8 @@ Mock GroupMe HTTP calls — never hit the real API in tests. Warnings are errors
   entrypoint check (runtime dependencies only, like Horizon), stdio end-to-end
   test, build.
 - `codeql.yml`, `scorecard.yml`, `zizmor.yml`, `dependency-review.yml` — security.
+- `live-smoke.yml` — manual-only live GroupMe smoke tests (see "Integration
+  tests" above).
 - `audit.yml` — `pip-audit` of the runtime dependencies in `uv.lock`: daily, on
   push to `main`, and on PRs that touch the lockfile.
 - `dependabot-auto-merge.yml` — arms auto-merge on low-risk Dependabot PRs

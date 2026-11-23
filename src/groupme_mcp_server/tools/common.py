@@ -19,6 +19,7 @@ from groupme_mcp_server.errors import (
     GroupMeNotFoundError,
     GroupMeRateLimitError,
 )
+from groupme_mcp_server.media import ImageFetcher
 from groupme_mcp_server.models import TopicRef
 from groupme_mcp_server.settings import get_settings
 
@@ -90,6 +91,17 @@ def not_found_detail_for(conversation: object) -> str | None:
         conversation guidance).
     """
     return TOPIC_NOT_FOUND_DETAIL if isinstance(conversation, TopicRef) else None
+
+
+def create_image_fetcher() -> ImageFetcher:
+    """Build the fetcher ``send_message`` uses to download images to re-host.
+
+    Tests replace this factory to inject a mock transport and resolver.
+
+    Returns:
+        A new, unopened image fetcher.
+    """
+    return ImageFetcher()
 
 
 def create_client() -> GroupMeClient:
