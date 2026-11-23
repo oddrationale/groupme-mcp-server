@@ -104,15 +104,18 @@ async def test_direct_chats_parse_into_models(client: GroupMeClient) -> None:
 
 async def test_topics_and_their_messages_are_readable(client: GroupMeClient) -> None:
     groups = await client.list_groups(per_page=100, omit_memberships=True)
-    parent = next((group for group in groups if group.children_count), None)
+    parent = next((group for group in groups if group.topic_count), None)
     if parent is None:
         pytest.skip("no group with topics among the first 100 groups")
     topics = await client.list_topics(parent.id)
+    assert topics, "GroupMe reported topics but the subgroups listing was empty"
     assert all(isinstance(topic, Topic) and topic.parent_id == parent.id for topic in topics)
-    if not topics:
-        pytest.skip("topic listing is empty")
-    messages = await client.list_group_messages(topics[0].id, limit=5)
-    assert all(message.conversation_id == topics[0].id for message in messages)
+    topic = await client.get_topic(parent.id, topics[0].id)
+    assert topic.id == topics[0].id
+    messages = await client.list_group_messages(topic.id, limit=5)
+    assert all(message.conversation_id == topic.id for message in messages)
+    # The likes leaderboard accepts a topic id too (an empty period is fine).
+    await client.leaderboard(topic.id, period="month")
 
 
 async def test_leaderboard_endpoint_responds(client: GroupMeClient, first_group: Group) -> None:

@@ -79,6 +79,12 @@ def _expect_list(payload: object, context: str) -> list[dict[str, Any]]:
     return [_expect_dict(item, context) for item in payload]
 
 
+def _expect_parent(topic: Topic, group_id: GroupId) -> None:
+    if topic.parent_id != group_id:
+        msg = "GroupMe returned a topic belonging to a different parent group"
+        raise GroupMeApiError(msg)
+
+
 class GroupMeClient:
     """Async client for the raw GroupMe API v3 endpoints.
 
@@ -217,23 +223,51 @@ class GroupMeClient:
         return _parse_list(parse_group, raw, "group")
 
     async def list_topics(self, group_id: GroupId) -> list[Topic]:
-        """List a group's topics using GroupMe's undocumented subgroup endpoint.
+        """List a group's topics.
+
+        Uses GroupMe's undocumented ``/groups/{group_id}/subgroups`` route,
+        which the GroupMe web client relies on.
 
         Args:
-            group_id: Parent group id.
+            group_id: The parent group's id.
 
         Returns:
-            All topics returned by the endpoint, or an empty list.
+            The group's topics (empty when it has none).
 
         Raises:
-            GroupMeApiError: If the response contains a different parent.
+            GroupMeApiError: If GroupMe returns a topic of a different parent.
         """
         raw = _expect_list(await self._request("GET", f"/groups/{group_id}/subgroups"), "topics")
         topics = _parse_list(parse_topic, raw, "topic")
-        if any(topic.parent_id != group_id for topic in topics):
-            msg = "GroupMe returned a topic belonging to a different parent group"
-            raise GroupMeApiError(msg)
+        for topic in topics:
+            _expect_parent(topic, group_id)
         return topics
+
+    async def get_topic(self, group_id: GroupId, topic_id: GroupId) -> Topic:
+        """Fetch one topic through its parent group.
+
+        This doubles as a membership check: GroupMe answers 404 when
+        ``topic_id`` is not a topic of ``group_id``.
+
+        Args:
+            group_id: The parent group's id.
+            topic_id: The topic's id.
+
+        Returns:
+            The normalized topic.
+
+        Raises:
+            GroupMeApiError: If GroupMe returns a different topic or parent.
+        """
+        raw = _expect_dict(
+            await self._request("GET", f"/groups/{group_id}/subgroups/{topic_id}"), "topic"
+        )
+        topic = _parse(parse_topic, raw, "topic")
+        _expect_parent(topic, group_id)
+        if topic.id != topic_id:
+            msg = "GroupMe returned a different topic than the one requested"
+            raise GroupMeApiError(msg)
+        return topic
 
     async def get_group(self, group_id: GroupId) -> Group:
         """Fetch one group by id.

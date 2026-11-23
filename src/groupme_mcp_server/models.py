@@ -153,14 +153,18 @@ class MessagePreview(GroupMeModel):
 
 
 class Group(GroupMeModel):
-    """A GroupMe group conversation."""
+    """A GroupMe group conversation.
+
+    ``topic_count`` is GroupMe's ``children_count``: how many topics the
+    group has (``0`` when GroupMe omits it).
+    """
 
     kind: Literal["group"] = "group"
     id: GroupId
     name: str
     description: str | None = None
     image_url: str | None = None
-    children_count: int | None = None
+    topic_count: int = 0
     member_count: int | None = None
     members: tuple[Member, ...] | None = None
     creator_user_id: UserId | None = None
@@ -198,41 +202,42 @@ class GroupRef(GroupMeModel):
 
 
 class Topic(GroupMeModel):
-    """A topic nested inside a parent group; unknown topic types are preserved."""
+    """A topic: a separately addressed chat nested inside a parent group.
+
+    GroupMe calls topics *subgroups*. A topic's messages live at
+    ``/groups/{topic_id}/messages`` like any group's, but the topic itself is
+    only reachable through its parent (``/groups/{parent_id}/subgroups``).
+    ``type`` is kept verbatim (e.g. ``"private"`` or ``"announcement"``) so
+    unknown future types survive.
+    """
 
     id: GroupId
     parent_id: GroupId
     name: str
     type: str
     description: str | None = None
+    updated_at: datetime | None = None
+    preview: MessagePreview | None = None
 
 
 class TopicRef(GroupMeModel):
-    """Explicit parent/topic reference, preventing accidental main-chat routing."""
+    """Reference to a topic inside a parent group, for tool inputs.
+
+    Both ids are required so a topic is never confused with an ordinary
+    group: sends verify that the topic belongs to ``parent_group_id`` before
+    posting. Extra fields are forbidden, as for the other references.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kind: Literal["topic"] = "topic"
-    parent_group_id: str = Field(pattern=r"^[0-9]+$", description="Parent group id.")
-    topic_id: str = Field(pattern=r"^[0-9]+$", description="Topic id from list_topics.")
-
-
-def parse_topic(raw: dict[str, Any]) -> Topic:
-    """Normalize a subgroup payload, whose name is stored in ``topic``.
-
-    Args:
-        raw: A GroupMe subgroup object.
-
-    Returns:
-        The topic with string-normalized identifiers.
-    """
-    ref = TopicRef(parent_group_id=str(raw["parent_id"]), topic_id=str(raw["id"]))
-    return Topic(
-        id=GroupId(ref.topic_id),
-        parent_id=GroupId(ref.parent_group_id),
-        name=raw["topic"],
-        type=raw["type"],
-        description=raw.get("description"),
+    parent_group_id: GroupId = Field(
+        pattern=r"^[0-9]+$",
+        description="The parent group's id: the group_id of the list_conversations entry.",
+    )
+    topic_id: GroupId = Field(
+        pattern=r"^[0-9]+$",
+        description="The topic's id, from that entry's topics in list_conversations.",
     )
 
 
@@ -378,6 +383,10 @@ def _group_preview(raw: dict[str, Any]) -> MessagePreview | None:
     )
 
 
+def _count(value: object) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
+
+
 def _parse_member(raw: dict[str, Any]) -> Member:
     roles = raw.get("roles")
     return Member(
@@ -407,13 +416,35 @@ def parse_group(raw: dict[str, Any]) -> Group:
     return Group(
         id=GroupId(str(raw["id"])),
         name=str(raw["name"]),
-        children_count=raw.get("children_count"),
+        topic_count=_count(raw.get("children_count")),
         description=raw.get("description"),
         image_url=raw.get("image_url"),
         member_count=len(members) if members is not None else None,
         members=members,
         creator_user_id=UserId(str(creator)) if creator is not None else None,
         share_url=raw.get("share_url"),
+        updated_at=optional_epoch(raw.get("updated_at")),
+        preview=_group_preview(raw),
+    )
+
+
+def parse_topic(raw: dict[str, Any]) -> Topic:
+    """Normalize a raw GroupMe subgroup dict into a ``Topic``.
+
+    Args:
+        raw: The subgroup object as returned by ``/groups/{id}/subgroups``,
+            whose name lives in ``topic``.
+
+    Returns:
+        The normalized topic, with string ids and the same last-message
+        preview a group listing carries.
+    """
+    return Topic(
+        id=GroupId(str(raw["id"])),
+        parent_id=GroupId(str(raw["parent_id"])),
+        name=str(raw["topic"]),
+        type=str(raw["type"]),
+        description=raw.get("description") or None,
         updated_at=optional_epoch(raw.get("updated_at")),
         preview=_group_preview(raw),
     )

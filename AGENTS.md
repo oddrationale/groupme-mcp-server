@@ -11,8 +11,9 @@ this repository. Humans: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Current state: read, agentic, and write tools implemented**
 (`list_conversations`, `read_messages`, `get_conversation_context`,
-`search_messages`, `get_highlights`, `send_message`, `react_to_message`);
-image upload (arbitrary-URL images) is not yet.
+`search_messages`, `get_highlights`, `send_message`, `react_to_message`),
+including group topics (GroupMe "subgroups"); image upload (arbitrary-URL
+images) is not yet.
 
 ## Toolchain — use these, not the alternatives
 

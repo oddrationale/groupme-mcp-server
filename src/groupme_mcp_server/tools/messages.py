@@ -39,17 +39,19 @@ async def read_messages(
 ) -> MessagePage:
     """Read messages from one GroupMe conversation, oldest first.
 
-    Use this to read or page through a group, topic, or direct-message chat.
-    Discover groups and DMs with ``list_conversations`` and topics with ``list_topics``.
-    Sender names are resolved and attachments are normalized (image URLs,
-    reply/mention summaries). An empty page is a normal answer, not an
-    error: it means the conversation has no messages in the requested range.
+    Use this to read or page through the history of a specific group, topic,
+    or direct-message chat once you know its id (from ``list_conversations``,
+    which also lists each group's topics). Sender names are resolved and
+    attachments are normalized (image URLs, reply/mention summaries). An
+    empty page is a normal answer, not an error: it means the conversation
+    has no messages in the requested range.
 
     Args:
-        conversation: For topics, use ``{"kind": "topic", "parent_group_id": ...,
-            "topic_id": ...}`` from ``list_topics``. Which conversation to read: ``{"kind": "group",
-            "group_id": ...}`` or ``{"kind": "direct", "other_user_id":
-            ...}``.
+        conversation: Which conversation to read: ``{"kind": "group",
+            "group_id": ...}``, ``{"kind": "direct", "other_user_id": ...}``,
+            or ``{"kind": "topic", "parent_group_id": ..., "topic_id": ...}``
+            for a topic (a group's main chat does not include its topics'
+            messages).
         before_id: Read messages older than this message id (use the
             previous page's ``next_before_id``). At most one of ``before_id``
             and ``since_id`` may be given.
@@ -68,11 +70,12 @@ async def read_messages(
     detailed = response_format == "detailed"
     before = MessageId(before_id) if before_id is not None else None
     since = MessageId(since_id) if since_id is not None else None
-    async with common.tool_client(_EXAMPLE) as client:
+    async with common.tool_client(
+        _EXAMPLE, not_found_detail=common.not_found_detail_for(conversation)
+    ) as client:
         if not isinstance(conversation, DirectRef):
-            group_id = await common.resolve_group_id(client, conversation)
             newest_first = await client.list_group_messages(
-                group_id,
+                common.message_group_id(conversation),
                 before_id=before,
                 since_id=since,
                 limit=limit,

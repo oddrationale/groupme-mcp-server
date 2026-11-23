@@ -19,11 +19,13 @@ from groupme_mcp_server.errors import (
     GroupMeNotFoundError,
     GroupMeRateLimitError,
 )
-from groupme_mcp_server.models import GroupId, GroupRef, TopicRef
+from groupme_mcp_server.models import TopicRef
 from groupme_mcp_server.settings import get_settings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
+
+    from groupme_mcp_server.models import GroupId, GroupRef
 
 READ_ONLY_ANNOTATIONS: dict[str, bool] = {
     "read_only_hint": True,
@@ -53,29 +55,41 @@ REACTION_ANNOTATIONS: dict[str, bool] = {
 in the same state, and an unlike only removes this user's own like."""
 
 
-async def resolve_group_id(client: GroupMeClient, conversation: GroupRef | TopicRef) -> GroupId:
-    """Resolve a group-like target, validating topics against their parent.
+TOPIC_NOT_FOUND_DETAIL = (
+    "GroupMe could not find that topic. Check both ids - call list_conversations: each "
+    "group entry lists its topics with their topic_id and parent_group_id. Keep the topic "
+    "destination rather than switching to the parent group's main chat."
+)
+"""404 guidance for calls addressed to a topic."""
+
+
+def message_group_id(conversation: GroupRef | TopicRef) -> GroupId:
+    """Pick the id whose ``/groups/{id}/messages`` holds a conversation's messages.
+
+    A topic's messages live under the topic's own id, never the parent's.
 
     Args:
-        client: Open GroupMe client.
-        conversation: Caller-selected group or topic destination.
+        conversation: A group or topic reference.
 
     Returns:
-        The validated group or topic id.
-
-    Raises:
-        ValueError: If the topic is not listed under the supplied parent.
+        The topic id for a topic, otherwise the group id.
     """
     if isinstance(conversation, TopicRef):
-        topics = await client.list_topics(GroupId(conversation.parent_group_id))
-        if not any(topic.id == conversation.topic_id for topic in topics):
-            msg = (
-                "Topic is not available under this parent; "
-                "call list_topics with the parent group id"
-            )
-            raise ValueError(msg)
-        return GroupId(conversation.topic_id)
-    return GroupId(conversation.group_id)
+        return conversation.topic_id
+    return conversation.group_id
+
+
+def not_found_detail_for(conversation: object) -> str | None:
+    """Choose the 404 guidance for a conversation reference.
+
+    Args:
+        conversation: The reference a tool was called with.
+
+    Returns:
+        Topic-specific guidance for a topic, else ``None`` (the default
+        conversation guidance).
+    """
+    return TOPIC_NOT_FOUND_DETAIL if isinstance(conversation, TopicRef) else None
 
 
 def create_client() -> GroupMeClient:
@@ -102,7 +116,7 @@ def tool_error_message(
         exc: The typed error raised by the client layer.
         example: A valid example call for the failing tool.
         not_found_detail: Tool-specific guidance for a 404; the default
-            points at ``list_conversations`` or ``list_topics`` for ids.
+            points at ``list_conversations`` for conversation ids.
 
     Returns:
         The message to raise as a ``ToolError``.
@@ -117,9 +131,7 @@ def tool_error_message(
             if not_found_detail is not None
             else (
                 "GroupMe could not find that conversation. Check the id - "
-                "call list_conversations to discover valid group_id / other_user_id values. "
-                "For topics, call list_topics with parent_group_id to verify topic_id; "
-                "keep the topic destination rather than switching to the parent chat."
+                "call list_conversations to discover valid group_id / other_user_id values."
             )
         )
     else:

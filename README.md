@@ -25,12 +25,11 @@ truncated.
 
 | Tool                       | What it does                                                                 |
 | -------------------------- | ---------------------------------------------------------------------------- |
-| `list_conversations`       | Merge groups and DMs into one recency-sorted list with last-message previews. |
-| `list_topics`              | Discover topics within a group, including announcement topics.               |
+| `list_conversations`       | Merge groups and DMs into one recency-sorted list with last-message previews; groups list their topics. |
 | `read_messages`            | Read one group, topic, or DM, oldest first, with a `next_before_id` cursor. |
-| `get_conversation_context` | One group's metadata, member list, and recent messages in a single call.      |
+| `get_conversation_context` | One group's (or topic's) metadata, member list, and recent messages in a single call. |
 | `search_messages`          | Search a conversation's history client-side (GroupMe has no search API), with honest scan accounting. |
-| `get_highlights`           | A group's top-liked messages for a day/week/month plus a member summary.      |
+| `get_highlights`           | A group's or topic's top-liked messages for a day/week/month plus a member summary. |
 | `send_message`             | Post to a group, topic, or DM, optionally as a reply or with a GroupMe-hosted image. |
 | `react_to_message`         | Like or unlike one message (ids from `read_messages` detailed format).        |
 
@@ -39,42 +38,48 @@ or `"detailed"` (full ids and metadata).
 
 ### Group topics
 
-Group listings and context preserve `children_count` when GroupMe supplies it.
-Use the parent group's ID to discover topics; topic IDs and parent IDs are
-returned as strings in both response formats. Detailed results also include
-descriptions.
+A GroupMe group can contain **topics**: separate chats such as
+"Announcements" that sit inside the group. A group's main chat does not
+contain its topics' messages, so the tools address topics explicitly.
 
-```json
-{"group_id": "12345678", "response_format": "detailed"}
-```
-
-Pass that object to `list_topics`. Then use a returned topic destination with
-`read_messages`, `search_messages`, or `send_message`, for example:
+`list_conversations` lists each group's topics under the group, most recently
+active first, with their own last-message previews:
 
 ```json
 {
-  "conversation": {
-    "kind": "topic",
-    "parent_group_id": "12345678",
-    "topic_id": "23456789"
-  },
-  "text": "Trip details are ready."
+  "kind": "group",
+  "name": "Trip Planning",
+  "group_id": "12345678",
+  "topics": [
+    {
+      "topic_id": "23456789",
+      "parent_group_id": "12345678",
+      "name": "Announcements",
+      "type": "announcement",
+      "last_message": "Ada: Trip details are ready.",
+      "last_active": "2h ago"
+    }
+  ]
 }
 ```
 
-For `read_messages`, replace `text` with optional pagination arguments such as
-`limit` and `before_id`; for `search_messages`, replace it with `query`.
-Replies and GroupMe-hosted image attachments use the same arguments as group
-messages. Send confirmations include `kind`, `parent_group_id`, and `topic_id`.
+Pass a topic to `read_messages`, `search_messages`, or `send_message` as a
+`conversation`:
 
-Topic discovery depends on the **undocumented**
-`GET /groups/{parent_group_id}/subgroups` route. Each topic operation verifies
-membership under the supplied parent before using
-`/groups/{topic_id}/messages`. Failures never redirect to the parent chat.
-GroupMe controls access and posting permissions, including announcement-topic
-and developer-token restrictions; this server cannot bypass them. An ambiguous
-send failure is not automatically retried. Topic creation, deletion, membership
-management, and topic highlights are not supported.
+```json
+{"kind": "topic", "parent_group_id": "12345678", "topic_id": "23456789"}
+```
+
+`get_conversation_context` and `get_highlights` take an optional `topic_id`
+next to the parent's `group_id`. Before sending to a topic, `send_message`
+checks that the topic belongs to the stated parent; a failed send is never
+redirected to the parent's main chat. GroupMe enforces who may post, for
+example in announcement topics.
+
+Topics come from GroupMe's **undocumented** `GET /groups/{id}/subgroups`
+route, which the GroupMe web client uses. If it fails, `list_conversations`
+still lists the group (without its topics) and says so in its `note`.
+Creating, editing, and deleting topics is not supported.
 
 ## Connecting to the hosted server
 
