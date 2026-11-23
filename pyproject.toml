@@ -1,6 +1,6 @@
 [project]
 name = "groupme-mcp-server"
-version = "0.2.2"
+version = "0.3.0"
 description = "A FastMCP server that exposes the GroupMe API v3 to MCP clients."
 readme = "README.md"
 license = "MIT"

@@ -7,6 +7,13 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Do not edit entries by hand — they are regenerated from commit history. See
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how a release is cut.
 
+## [0.3.0](https://github.com/oddrationale/groupme-mcp-server/compare/v0.2.2...v0.3.0) (2026-11-23)
+
+
+### Features
+
+* **topics:** support group topics across all tools ([#78](https://github.com/oddrationale/groupme-mcp-server/issues/78)) ([fe59ced](https://github.com/oddrationale/groupme-mcp-server/commit/fe59cedf305ab5a364e519c4b9d69e8eedde0b06)), closes [#73](https://github.com/oddrationale/groupme-mcp-server/issues/73)
+
 ## [0.2.2](https://github.com/oddrationale/groupme-mcp-server/compare/v0.2.1...v0.2.2) (2026-11-14)
 
 
