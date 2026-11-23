@@ -7,6 +7,13 @@ this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Do not edit entries by hand — they are regenerated from commit history. See
 [CONTRIBUTING.md](CONTRIBUTING.md#releasing) for how a release is cut.
 
+## [0.4.0](https://github.com/oddrationale/groupme-mcp-server/compare/v0.3.0...v0.4.0) (2026-11-23)
+
+
+### Features
+
+* **send:** attach images from any URL; add a manual live-smoke workflow ([#81](https://github.com/oddrationale/groupme-mcp-server/issues/81)) ([ccc75f3](https://github.com/oddrationale/groupme-mcp-server/commit/ccc75f38817df203668f6cabb346bcb0cd529ff4))
+
 ## [0.3.0](https://github.com/oddrationale/groupme-mcp-server/compare/v0.2.2...v0.3.0) (2026-11-23)
 
 
