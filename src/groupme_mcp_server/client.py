@@ -11,16 +11,19 @@ from __future__ import annotations
 import asyncio
 import random
 import uuid
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
 import httpx2
 
-from groupme_mcp_server.errors import GroupMeApiError
+from groupme_mcp_server.errors import GroupMeApiError, error_for_status
 from groupme_mcp_server.models import (
     MAX_MESSAGE_LIMIT,
     RATE_LIMIT_STATUSES,
     backoff_delay,
     ensure_single_cursor,
+    is_groupme_image_url,
+    meta_errors,
     parse_direct_chat,
     parse_group,
     parse_me,
@@ -83,6 +86,19 @@ def _expect_parent(topic: Topic, group_id: GroupId) -> None:
     if topic.parent_id != group_id:
         msg = "GroupMe returned a topic belonging to a different parent group"
         raise GroupMeApiError(msg)
+
+
+def _json_or_none(response: httpx2.Response) -> object | None:
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+def _picture_url(payload: object) -> str | None:
+    inner = payload.get("payload") if isinstance(payload, dict) else None
+    url = inner.get("picture_url") if isinstance(inner, dict) else None
+    return url if isinstance(url, str) and is_groupme_image_url(url) else None
 
 
 class GroupMeClient:
@@ -154,24 +170,25 @@ class GroupMeClient:
         """Close the underlying connection pool."""
         await self._client.aclose()
 
-    async def _request(
+    async def _send(
         self,
         method: str,
-        path: str,
+        url: str,
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
-    ) -> object | None:
+        content: bytes | None = None,
+        content_type: str | None = None,
+    ) -> httpx2.Response:
         token = self._settings.require_access_token().get_secret_value()
+        headers = {"X-Access-Token": token}
+        if content_type is not None:
+            headers["Content-Type"] = content_type
         attempt = 0
         while True:
             try:
                 response = await self._client.request(
-                    method,
-                    path,
-                    params=params,
-                    json=json_body,
-                    headers={"X-Access-Token": token},
+                    method, url, params=params, json=json_body, content=content, headers=headers
                 )
             except httpx2.HTTPError as exc:
                 # Only the exception type, never its text: transport errors
@@ -181,14 +198,50 @@ class GroupMeClient:
                 )
                 raise GroupMeApiError(msg) from exc
             if response.status_code not in RATE_LIMIT_STATUSES or attempt >= self._max_retries:
-                break
+                return response
             await self._sleep(backoff_delay(attempt, jitter=self._rng()))
             attempt += 1
-        try:
-            payload: object = response.json()
-        except ValueError:
-            payload = None
-        return unwrap_envelope(response.status_code, payload)
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json_body: dict[str, Any] | None = None,
+    ) -> object | None:
+        response = await self._send(method, path, params=params, json_body=json_body)
+        return unwrap_envelope(response.status_code, _json_or_none(response))
+
+    async def upload_image(self, data: bytes, content_type: str) -> str:
+        """Upload an image to GroupMe's image service.
+
+        Args:
+            data: The image bytes.
+            content_type: The image's media type, e.g. ``"image/png"``.
+
+        Returns:
+            The GroupMe-hosted ``https://i.groupme.com/...`` URL, ready to
+            attach to a message.
+
+        Raises:
+            GroupMeApiError: If the upload fails or the service does not
+                return a GroupMe image URL.
+        """
+        response = await self._send(
+            "POST",
+            f"{self._settings.image_api_base_url.rstrip('/')}/pictures",
+            content=data,
+            content_type=content_type,
+        )
+        payload = _json_or_none(response)
+        if response.status_code >= HTTPStatus.BAD_REQUEST:
+            raise error_for_status(response.status_code, meta_errors(payload))
+        picture_url = _picture_url(payload)
+        if picture_url is None:
+            msg = "GroupMe's image service did not return a GroupMe image URL"
+            raise GroupMeApiError(msg, status=response.status_code)
+        return picture_url
 
     async def get_me(self) -> Me:
         """Fetch the authenticated user's profile.

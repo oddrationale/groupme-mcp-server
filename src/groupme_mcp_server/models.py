@@ -566,8 +566,26 @@ def validate_outgoing_text(text: str, *, has_attachments: bool) -> None:
         raise ValueError(msg)
 
 
+def is_groupme_image_url(url: str) -> bool:
+    """Whether a URL is already hosted on GroupMe's image service.
+
+    Args:
+        url: Any URL.
+
+    Returns:
+        ``True`` for an ``https`` URL on one of
+        [`GROUPME_IMAGE_HOSTS`][groupme_mcp_server.models.GROUPME_IMAGE_HOSTS],
+        which a message can attach as-is.
+    """
+    parsed = urlsplit(url.strip())
+    return parsed.scheme == "https" and parsed.hostname in GROUPME_IMAGE_HOSTS
+
+
 def groupme_image_attachment(image_url: str) -> dict[str, Any]:
     """Build an image attachment from a GroupMe image-service URL.
+
+    Other image URLs must be re-hosted first (``send_message`` does this);
+    this is the last check before the attachment goes to GroupMe.
 
     Args:
         image_url: An ``https`` URL on one of
@@ -578,19 +596,12 @@ def groupme_image_attachment(image_url: str) -> dict[str, Any]:
 
     Raises:
         ValueError: If the URL is not a GroupMe image-service URL.
-            Downloading and re-uploading arbitrary images is not supported
-            yet (future work: the image-upload service).
     """
-    parsed = urlsplit(image_url)
-    if parsed.scheme != "https" or parsed.hostname not in GROUPME_IMAGE_HOSTS:
+    if not is_groupme_image_url(image_url):
         hosts = " or ".join(f"https://{host}/..." for host in sorted(GROUPME_IMAGE_HOSTS))
-        msg = (
-            f"image_url must be a GroupMe image-service URL ({hosts}); "
-            "other image URLs are not supported yet, so upload the image to "
-            "GroupMe's image service first and pass the resulting URL"
-        )
+        msg = f"an image attachment must be a GroupMe image-service URL ({hosts})"
         raise ValueError(msg)
-    return {"type": "image", "url": image_url}
+    return {"type": "image", "url": image_url.strip()}
 
 
 def build_outgoing_attachments(
@@ -601,7 +612,8 @@ def build_outgoing_attachments(
     Args:
         reply_to_message_id: Message being replied to, if any; becomes a
             ``reply`` attachment.
-        image_url: GroupMe image-service URL to attach, if any.
+        image_url: GroupMe image-service URL to attach, if any (re-host
+            other images first).
 
     Returns:
         The raw attachment objects, in reply-then-image order.
