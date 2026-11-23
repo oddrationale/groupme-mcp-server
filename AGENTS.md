@@ -75,9 +75,10 @@ uv run pytest -m integration --no-cov
   would otherwise fail the 100% coverage gate.
 - The live GroupMe suites also run in GitHub Actions through the manual
   `live-smoke.yml` workflow (Actions → Live smoke → Run workflow). Its
-  secrets (`GROUPME_ACCESS_TOKEN`, `GROUPME_LIVE_GROUP_ID`,
-  `GROUPME_LIVE_TOPIC_ID`) live only on the protected `groupme-live-smoke`
-  environment; the job writes them to `.env` and fails if any is missing.
+  settings live only on the protected `groupme-live-smoke` environment: the
+  secret `GROUPME_ACCESS_TOKEN` and the variables `GROUPME_LIVE_GROUP_ID` and
+  `GROUPME_LIVE_TOPIC_ID`. The job writes them to `.env` and fails if any is
+  missing.
   Never trigger it from a pull request, give it repository-level secrets, or
   add a schedule without the maintainer's say-so: every run posts to the test
   topic.

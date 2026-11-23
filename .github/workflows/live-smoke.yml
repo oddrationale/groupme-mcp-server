@@ -1,11 +1,11 @@
 # Live smoke tests against the real GroupMe API. Manual only: they post a few
 # tagged messages (and one image) to the maintainer's dedicated test topic.
 #
-# Secrets live on the protected `groupme-live-smoke` environment, never on the
+# Settings live on the protected `groupme-live-smoke` environment, never on the
 # repository, so pull requests (including from forks) cannot reach them:
-#   GROUPME_ACCESS_TOKEN   GroupMe token of the test account
-#   GROUPME_LIVE_GROUP_ID  the dedicated test group
-#   GROUPME_LIVE_TOPIC_ID  a topic inside that group
+#   secret   GROUPME_ACCESS_TOKEN   GroupMe token of the test account
+#   variable GROUPME_LIVE_GROUP_ID  the dedicated test group
+#   variable GROUPME_LIVE_TOPIC_ID  a topic inside that group
 # See AGENTS.md ("Integration tests") for what the suites may touch.
 name: Live smoke
 
@@ -44,11 +44,11 @@ jobs:
       # The test suites read these from the repository .env only (the unit-test
       # conftest scrubs GROUPME_* from the environment), so write them there.
       # Fail instead of letting every live test skip and the run look green.
-      - name: Write .env from the environment's secrets
+      - name: Write .env from the environment's secret and variables
         env:
           GROUPME_ACCESS_TOKEN: ${{ secrets.GROUPME_ACCESS_TOKEN }}
-          GROUPME_LIVE_GROUP_ID: ${{ secrets.GROUPME_LIVE_GROUP_ID }}
-          GROUPME_LIVE_TOPIC_ID: ${{ secrets.GROUPME_LIVE_TOPIC_ID }}
+          GROUPME_LIVE_GROUP_ID: ${{ vars.GROUPME_LIVE_GROUP_ID }}
+          GROUPME_LIVE_TOPIC_ID: ${{ vars.GROUPME_LIVE_TOPIC_ID }}
         run: |
           umask 077
           : > .env
